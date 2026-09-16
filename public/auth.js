@@ -190,7 +190,10 @@
     if (/already registered/i.test(m)) return 'That email already has an account. Sign in instead.';
     if (/email not confirmed/i.test(m)) return 'Confirm your email first. Check your inbox for the link.';
     if (/should be at least|password.*6 char/i.test(m)) return 'Use a password of at least 8 characters.';
-    if (/rate limit|too many|for security purposes/i.test(m)) return 'Too many tries. Wait a minute, then try again.';
+    // Two different limits, and the wait is very different. The per-address one
+    // is seconds. The hourly cap on the whole project is not.
+    if (/for security purposes|seconds/i.test(m)) return 'That was quick. Wait a few seconds and try again.';
+    if (/rate limit|too many/i.test(m)) return 'Too many emails have gone out in the last hour. Try a password, or try again later.';
     return m;
   }
 
