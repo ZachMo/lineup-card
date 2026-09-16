@@ -261,7 +261,7 @@
     border: 1px solid transparent; background: var(--warn-wash); color: var(--warn);
   }
   .cap-add { font-size: .75rem; font-weight: 700; padding: 4px 10px; border-radius: 999px; }
-  .prefs select.cap-pos, .prefs select.cap-num {
+  select.cap-pos, select.cap-num {
     font: inherit; font-size: .8rem; padding: 4px 6px; border-radius: 8px;
     border: 1px solid var(--border); background: var(--surface); color: var(--ink);
   }
@@ -423,6 +423,9 @@
           <button id="pos-add" type="button">Add position</button>
         </div>
       </div>
+      <div class="field">Innings limits
+        <div id="cap-edit" class="row" style="gap:6px"></div>
+      </div>
       <label class="check"><input type="checkbox" id="pc">
         <span>Pitcher and catcher count as infield</span></label>
       <label class="check"><input type="checkbox" id="print-players">
@@ -512,10 +515,11 @@ function solveLineup(o) {
     Math.max(0, fieldCount - players.reduce((t, _p, pi) => t + (okIn[pi][i] ? 1 : 0), 0)));
   // Nobody is asked for what their time at the game cannot give: a player who
   // arrives in the 5th cannot have an infield inning in the first four.
-  // A ceiling on innings at one spot, such as two at catcher.
-  const capList = players.map(p => Object.entries(p.caps || {})
+  // A ceiling the league puts on a spot, such as two innings at catcher. It
+  // applies to every player alike.
+  const capList = Object.entries(o.posCaps || {})
     .map(([k, v]) => [slots.indexOf(k), v | 0])
-    .filter(([i]) => i >= 0));
+    .filter(([i]) => i >= 0);
   const windowLen = okIn.map(row => row.reduce((t, ok) => t + (ok ? 1 : 0), 0));
   const okEarly = okIn.map(row => row.slice(0, early).some(Boolean));
   const index = new Map(players.map((p, i) => [p.id, i]));
@@ -571,8 +575,8 @@ function solveLineup(o) {
     }
     // A field spot may stay empty only while the team is short that inning.
     for (let i = 0; i < innings; i++) if (gaps[i] > spare[i]) c += HARD * (gaps[i] - spare[i]);
-    for (let p = 0; p < n; p++) {
-      for (const [sI, max] of capList[p]) {
+    if (capList.length) for (let p = 0; p < n; p++) {
+      for (const [sI, max] of capList) {
         const over = posCnt[p * S + sI] - max;
         if (over > 0) c += OVER_CAP * over;
       }
@@ -662,7 +666,7 @@ const slotKinds = ks => ks.map(k => isBenchKey(k) ? 'B' : posInfo(k).kind);
 const KEY = 'lineup-card-v1';
 const DEFAULTS = {
   team: '', opponent: '', date: '', innings: 6, early: 4, outfield: 4,
-  positions: [], minPlay: 0, pcInfield: true, printPlayers: true, players: [], grid: [],
+  positions: [], posCaps: {}, minPlay: 0, pcInfield: true, printPlayers: true, players: [], grid: [],
 };
 let s = load();
 let undoStack = [];
@@ -726,6 +730,14 @@ function normalize() {
       kind: p.kind === 'IF' ? 'IF' : 'OF',
     }));
   if (!s.positions.length) s.positions = posFromKeys(PRESETS.standard);
+  // Limits belong to the league, not to a player, so they are kept here and
+  // only for spots the team actually plays.
+  const caps = {};
+  for (const [k, v] of Object.entries(s.posCaps || {})) {
+    if (s.positions.some(p => p.k === k)) caps[k] = Math.max(0, Math.min(s.innings, v | 0));
+  }
+  s.posCaps = caps;
+  for (const p of s.players) delete p.caps; // from an earlier build
   for (const p of s.players) {
     p.from = Math.max(1, Math.min(s.innings, p.from || 1));
     p.to = p.to ? Math.max(p.from, Math.min(s.innings, p.to)) : 0;
@@ -767,7 +779,7 @@ function parseLine(line) {
   return { num: '', name: clean(t) };
 }
 const clean = t => t.replace(/[|~]/g, '').trim();
-const newPlayer = (num = '', name = '') => ({ id: uid(), num, name, here: true, noP: false, noC: false, noB: false, pref: [], avoid: [], from: 1, to: 0, caps: {} });
+const newPlayer = (num = '', name = '') => ({ id: uid(), num, name, here: true, noP: false, noC: false, noB: false, pref: [], avoid: [], from: 1, to: 0 });
 
 const GRIP = '<svg width="10" height="16" viewBox="0 0 10 16" aria-hidden="true" fill="currentColor"><circle cx="2" cy="2" r="1.5"/><circle cx="8" cy="2" r="1.5"/><circle cx="2" cy="8" r="1.5"/><circle cx="8" cy="8" r="1.5"/><circle cx="2" cy="14" r="1.5"/><circle cx="8" cy="14" r="1.5"/></svg>';
 
@@ -803,17 +815,6 @@ function prefsHTML(p) {
     <div class="sub2">Positions</div>
     <div class="row2">${btns}</div>
     <div class="hint2">Tap once to prefer, again to avoid, again to clear. Build leans this way, but the fairness rules still come first.</div>
-    <div class="sub2">Innings limits</div>
-    <div class="row2">
-      ${Object.entries(p.caps || {}).map(([k, v]) =>
-        `<button type="button" class="cap-chip" data-act="cap-del" data-pos="${esc(k)}"
-          aria-label="Remove the limit of ${v} innings at ${esc(posInfo(k).name)}">${esc(k)} &le; ${v} &times;</button>`).join('')}
-      <select class="cap-pos" aria-label="Position to limit">${fieldPositions()
-        .map(k => `<option value="${esc(k)}">${esc(k)}</option>`).join('')}</select>
-      <select class="cap-num" aria-label="Most innings allowed">${Array.from({ length: s.innings }, (_, i) => i)
-        .map(n => `<option value="${n}">${n}</option>`).join('')}</select>
-      <button type="button" class="cap-add" data-act="cap-add">Add limit</button>
-    </div>
   </div>`;
 }
 
@@ -870,18 +871,6 @@ $('roster').addEventListener('click', e => {
   if (!li) return;
   const p = byId(li.dataset.id);
   if (!p) return;
-  // "No more than two innings at catcher." Kept here, under Options, so a coach
-  // who does not need it never sees it.
-  const capBtn = e.target.closest('[data-act^="cap-"]');
-  if (capBtn) {
-    p.caps = p.caps || {};
-    if (capBtn.dataset.act === 'cap-del') delete p.caps[capBtn.dataset.pos];
-    else {
-      const k = li.querySelector('.cap-pos').value;
-      p.caps[k] = +li.querySelector('.cap-num').value;
-    }
-    return changed(true);
-  }
   // Prefer, avoid, clear. Three taps take a position back to where it started.
   const pos = e.target.closest('.pos-btn');
   if (pos) {
@@ -1015,9 +1004,10 @@ function teamLink() {
     + ((p.pref || []).length ? '~pref:' + p.pref.join('.') : '')
     + ((p.avoid || []).length ? '~avoid:' + p.avoid.join('.') : '')
     + ((p.from || 1) > 1 ? '~from:' + p.from : '')
-    + (p.to ? '~to:' + p.to : '')
-    + (Object.keys(p.caps || {}).length
-      ? '~cap:' + Object.entries(p.caps).map(([k, v]) => `${k}-${v}`).join('.') : '')).join('|'));
+    + (p.to ? '~to:' + p.to : '')).join('|'));
+  if (Object.keys(s.posCaps || {}).length) {
+    q.set('caps', Object.entries(s.posCaps).map(([k, v]) => `${k}-${v}`).join('.'));
+  }
   q.set('pos', s.positions.map(p => `${p.k}:${p.name}:${p.kind}`).join('|'));
   q.set('inn', s.innings);
   if (s.minPlay) q.set('min', s.minPlay);
@@ -1047,14 +1037,6 @@ function readLink() {
     };
     p.from = num('from') || 1;
     p.to = num('to');
-    const capFlag = flags.find(f => f.startsWith('cap:'));
-    p.caps = {};
-    if (capFlag) {
-      for (const pair of capFlag.slice(4).split('.')) {
-        const [k, v] = pair.split('-');
-        if (k && v !== undefined) p.caps[k] = Math.max(0, parseInt(v, 10) || 0);
-      }
-    }
     return p;
   }).filter(Boolean);
   // Links made before positions were editable carry `of` instead.
@@ -1063,7 +1045,12 @@ function readLink() {
     const [k, name, kind] = e.split(':');
     return k ? { k, name: name || k, kind: kind === 'IF' ? 'IF' : 'OF' } : null;
   }).filter(Boolean) : null;
-  return { team: q.get('team') || '', players, outfield: q.get('of') === '3' ? 3 : 4, positions,
+  const posCaps = {};
+  for (const pair of (q.get('caps') || '').split('.')) {
+    const [k, v] = pair.split('-');
+    if (k && v !== undefined) posCaps[k] = Math.max(0, parseInt(v, 10) || 0);
+  }
+  return { team: q.get('team') || '', players, outfield: q.get('of') === '3' ? 3 : 4, positions, posCaps,
     innings: +q.get('inn') || null, minPlay: +q.get('min') || 0 };
 }
 function applyLink() {
@@ -1080,6 +1067,7 @@ function applyLink() {
     : posFromKeys(link.outfield === 3 ? PRESETS.three : PRESETS.standard);
   if (link.innings) s.innings = link.innings;
   if (link.minPlay) s.minPlay = link.minPlay;
+  if (link.posCaps && Object.keys(link.posCaps).length) s.posCaps = link.posCaps;
   s.grid = [];
 }
 $('share').addEventListener('click', async () => {
@@ -1109,6 +1097,7 @@ function renderSettings() {
     Array.from({ length: s.innings }, (_, i) => i + 1)
       .map(n => `<option value="${n}" ${n === s.minPlay ? 'selected' : ''}>${n === 1 ? '1 inning' : n + ' innings'}</option>`).join('');
   renderPositions();
+  renderPosCaps();
   $('pc').checked = s.pcInfield;
   $('print-players').checked = s.printPlayers;
   // The folded panel still says what it holds.
@@ -1124,6 +1113,28 @@ $('date').addEventListener('input', e => { s.date = e.target.value; save(); rend
 $('innings').addEventListener('change', e => { s.innings = +e.target.value; changed(); });
 $('early').addEventListener('change', e => { s.early = +e.target.value; changed(); });
 $('minplay').addEventListener('change', e => { s.minPlay = +e.target.value; changed(); });
+// "Nobody catches more than two innings." A rule about the spot, applying to
+// every player on the team.
+function renderPosCaps() {
+  const chips = Object.entries(s.posCaps || {}).map(([k, v]) =>
+    `<button type="button" class="cap-chip" data-act="cap-del" data-pos="${esc(k)}"
+      aria-label="Remove the limit of ${v} innings at ${esc(posInfo(k).name)}">${esc(k)} &le; ${v} &times;</button>`).join('');
+  const spots = fieldPositions().filter(k => !(k in (s.posCaps || {})));
+  const adder = spots.length ? `
+    <select class="cap-pos" aria-label="Position to limit">${spots.map(k => `<option value="${esc(k)}">${esc(k)}</option>`).join('')}</select>
+    <select class="cap-num" aria-label="Most innings any player may play there">${Array.from({ length: s.innings }, (_, i) => i)
+      .map(n => `<option value="${n}" ${n === 2 ? 'selected' : ''}>${n}</option>`).join('')}</select>
+    <button type="button" class="cap-add" data-act="cap-add">Add limit</button>` : '';
+  $('cap-edit').innerHTML = chips + adder;
+}
+$('cap-edit').addEventListener('click', e => {
+  const btn = e.target.closest('button[data-act]');
+  if (!btn) return;
+  if (btn.dataset.act === 'cap-del') delete s.posCaps[btn.dataset.pos];
+  else s.posCaps[$('cap-edit').querySelector('.cap-pos').value] = +$('cap-edit').querySelector('.cap-num').value;
+  changed();
+});
+
 function renderPositions() {
   $('pos-edit').innerHTML = s.positions.map((p, i) => `
     <div class="posrow" data-i="${i}">
@@ -1395,11 +1406,11 @@ function checkLineup() {
     }
   }
   notes.push(...twice);
-  for (const p of players) {
-    for (const [k, max] of Object.entries(p.caps || {})) {
+  for (const [k, max] of Object.entries(s.posCaps || {})) {
+    for (const p of players) {
       const at = where.filter(w => w[p.id] === k).length;
       if (at > max) {
-        notes.push(`${shortName(p)} is at ${posInfo(k).name.toLowerCase()} ${at} innings, more than the ${max} set for ${shortName(p)}.`);
+        notes.push(`${shortName(p)} is at ${posInfo(k).name.toLowerCase()} ${at} innings. The limit is ${max}.`);
       }
     }
   }
@@ -1492,7 +1503,7 @@ $('build').addEventListener('click', () => {
     return f;
   });
   const r = solveLineup({
-    slots: ks, kinds: slotKinds(ks), ruleIF: ks.map(k => countsAsInfield(k, s.pcInfield)),
+    slots: ks, kinds: slotKinds(ks), ruleIF: ks.map(k => countsAsInfield(k, s.pcInfield)), posCaps: s.posCaps,
     innings: s.innings, early: early(), pcInfield: s.pcInfield, minPlay: s.minPlay, players, fixed,
   });
   s.grid = r.assign.map((row, i) => {
