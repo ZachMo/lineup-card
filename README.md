@@ -33,9 +33,9 @@ Three files, no build step, no framework.
 
 | File | What it holds |
 | --- | --- |
-| `index.html` | The whole tool: chart, roster, the lineup builder, print layout |
-| `auth.js` | Sign-in and cloud save. Does nothing until a project is configured |
-| `supabase-config.js` | Your Supabase address and public key |
+| `public/index.html` | The whole tool: chart, roster, the lineup builder, print layout |
+| `public/auth.js` | Sign-in and cloud save. Does nothing until a project is configured |
+| `public/supabase-config.js` | Your Supabase address and public key |
 
 The tool works with no account and no network. Everything saves in the browser,
 which is what a coach needs at a field with bad signal. Signing in adds a copy in
