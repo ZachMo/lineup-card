@@ -77,10 +77,42 @@ can read it. If one ever leaks, revoke it on that same page straight away.
 ## Two limits to know about
 
 **Email sending.** Supabase's built-in email is for testing only, at a few messages
-an hour. Before real coaches use this, add your own sender: create a free
-[Resend](https://resend.com) account, then in Supabase open **Authentication >
-Emails > SMTP Settings** and paste the Resend details. This also stops sign-in
-emails landing in spam.
+an hour, the address reads `noreply@mail.app.supabase.io`, and it often lands in
+spam. Sign-in links and account confirmations draw on the same small quota, so
+one can use up the other. The next section replaces it.
+
+## 8. Send email from your own domain
+
+Worth doing before real coaches sign up. It fixes the sender address and the
+rate limit together.
+
+1. Create a free account at <https://resend.com>.
+2. **Domains > Add domain**, and use a subdomain: `send.lineupcardcoach.com`.
+   Not the root. The root already carries an SPF record for Namecheap's email
+   forwarding, and a name may hold only one SPF record. A subdomain keeps the two
+   apart, so mail to `you@lineupcardcoach.com` keeps working.
+3. Resend lists a few DNS records. Add each one in Cloudflare under **DNS >
+   Records**, exactly as given. They are MX and TXT records, which Cloudflare
+   never proxies, so leave the cloud grey.
+4. Wait for Resend to mark the domain **Verified**. Usually minutes.
+5. In Resend, create an **API key** with send permission.
+6. In Supabase, open **Project Settings > Authentication > SMTP Settings** and
+   turn on custom SMTP:
+   - Host `smtp.resend.com`, port `465`
+   - Username `resend`
+   - Password: the Resend API key
+   - Sender email `noreply@lineupcardcoach.com`, sender name `Lineup Card`
+7. Open **Authentication > Rate Limits** and raise the emails-per-hour limit.
+   The low default exists because of the built-in sender.
+8. Send yourself a sign-in link and confirm it arrives from your own address.
+
+**A confirmation email that never arrived.** Until the step above is done, an
+account can be created while its confirmation email never lands, and that account
+cannot sign in with a password yet. Two ways out: open **Authentication > Users**,
+find the person and confirm them by hand; or turn **Confirm email** off under
+**Authentication > Sign In / Providers**, so accounts work at once. Turning it off
+means nobody proves they own the address they typed, which is a fair trade for a
+free lineup tool but worth knowing.
 
 **Sleeping projects.** A free Supabase project pauses after 7 days with no
 activity, and the first visit after that fails. Once you have real users this stops
