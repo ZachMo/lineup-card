@@ -113,6 +113,17 @@
   }
   .chip input:checked + span { background: var(--accent-wash); color: var(--accent); border-color: transparent; }
   .chip input:focus-visible + span { outline: 2px solid var(--accent); outline-offset: 1px; }
+  .player .more { font-size: .75rem; font-weight: 700; padding: 4px 9px; border-radius: 999px; color: var(--muted); }
+  .player .more[aria-expanded=true] { background: var(--wash); color: var(--ink); }
+  .prefs { flex: 1 1 100%; display: grid; gap: 7px; padding: 10px 4px 4px; }
+  .prefs .row2 { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+  .pos-btn {
+    font-size: .75rem; font-weight: 700; padding: 4px 9px; border-radius: 999px;
+    border: 1px solid var(--border); background: var(--surface); color: var(--muted);
+  }
+  .pos-btn[data-state=pref] { background: var(--accent-wash); color: var(--accent); border-color: transparent; }
+  .pos-btn[data-state=avoid] { background: var(--warn-wash); color: var(--warn); border-color: transparent; text-decoration: line-through; }
+  .prefs .hint2 { font-size: .74rem; color: var(--muted); }
   details.paste { margin-top: 12px; }
   details.paste summary { cursor: pointer; font-weight: 600; font-size: .88rem; color: var(--ink-2); }
   details.paste[open] summary { margin-bottom: 8px; }
@@ -318,6 +329,7 @@
         <button id="check" type="button">Check</button>
         <button id="undo" type="button" disabled>Undo</button>
         <button id="clear" type="button">Clear</button>
+        <button id="share-lineup" type="button">Share</button>
         <button id="print" type="button">Print</button>
       </div>
     </div>
@@ -365,7 +377,9 @@ function solveLineup(o) {
   const early = Math.min(o.early, innings);
   const n = players.length, S = slots.length;
   const HARD = 1e6, RULE = 1e5, SIT_TWICE = 2e4, SIT_SPREAD = 2e4,
-        SIT_SQ = 500, IF_SQ = 40, REPEAT = 60, OF_ROW = 8;
+        SIT_SQ = 500, IF_SQ = 40, REPEAT = 60, OF_ROW = 8,
+        // A coach's wishes, weighed under every fairness rule above them.
+        AVOID = 900, PREFER = 150;
 
   const bench = slots.map(isBenchKey);
   const inf = slots.map(k => !!POS[k] && POS[k].kind === 'IF');
@@ -373,6 +387,8 @@ function solveLineup(o) {
   const rule = slots.map(k => countsAsInfield(k, o.pcInfield));
   const pIdx = slots.indexOf('P'), cIdx = slots.indexOf('C');
   const noP = players.map(p => !!p.noP), noC = players.map(p => !!p.noC), noB = players.map(p => !!p.noB);
+  const slotSet = keys => new Set((keys || []).map(k => slots.indexOf(k)).filter(i => i >= 0));
+  const wants = players.map(p => slotSet(p.pref)), shuns = players.map(p => slotSet(p.avoid));
   const index = new Map(players.map((p, i) => [p.id, i]));
 
   const A = [], free = [];
@@ -410,6 +426,8 @@ function solveLineup(o) {
           continue;
         }
         if ((s === pIdx && noP[p]) || (s === cIdx && noC[p])) c += HARD;
+        if (shuns[p].has(s)) c += AVOID;
+        else if (wants[p].has(s)) c -= PREFER;
         if (inf[s]) ifc[p]++;
         else { if (lastOF[p] === i - 1) c += OF_ROW; lastOF[p] = i; }
         if (rule[s] && i < early) gotIF[p] = 1;
@@ -542,9 +560,26 @@ function parseLine(line) {
   return { num: '', name: clean(t) };
 }
 const clean = t => t.replace(/[|~]/g, '').trim();
-const newPlayer = (num = '', name = '') => ({ id: uid(), num, name, here: true, noP: false, noC: false, noB: false });
+const newPlayer = (num = '', name = '') => ({ id: uid(), num, name, here: true, noP: false, noC: false, noB: false, pref: [], avoid: [] });
 
 const GRIP = '<svg width="10" height="16" viewBox="0 0 10 16" aria-hidden="true" fill="currentColor"><circle cx="2" cy="2" r="1.5"/><circle cx="8" cy="2" r="1.5"/><circle cx="2" cy="8" r="1.5"/><circle cx="8" cy="8" r="1.5"/><circle cx="2" cy="14" r="1.5"/><circle cx="8" cy="14" r="1.5"/></svg>';
+
+// Which player's position panel is open. One at a time keeps the list short.
+let openPrefs = null;
+
+function prefsHTML(p) {
+  const pref = new Set(p.pref || []), avoid = new Set(p.avoid || []);
+  const btns = fieldPositions(s.outfield).map(k => {
+    const state = pref.has(k) ? 'pref' : avoid.has(k) ? 'avoid' : 'none';
+    const said = state === 'pref' ? 'prefers' : state === 'avoid' ? 'avoids' : 'has no preference for';
+    return `<button type="button" class="pos-btn" data-pos="${k}" data-state="${state}"
+      aria-label="${esc(shortName(p))} ${said} ${POS[k].name}">${k}</button>`;
+  }).join('');
+  return `<div class="prefs">
+    <div class="row2">${btns}</div>
+    <div class="hint2">Tap once to prefer a position, again to avoid it, again to clear. Build leans this way, but the fairness rules still come first.</div>
+  </div>`;
+}
 
 function renderRoster() {
   const list = $('roster');
@@ -567,8 +602,10 @@ function renderRoster() {
         <label class="chip" title="Can pitch"><input type="checkbox" data-f="canP" ${!p.noP ? 'checked' : ''}><span>P</span></label>
         <label class="chip" title="Can catch"><input type="checkbox" data-f="canC" ${!p.noC ? 'checked' : ''}><span>C</span></label>
         <label class="chip" title="Can sit on the bench"><input type="checkbox" data-f="canB" ${!p.noB ? 'checked' : ''}><span>Bench</span></label>
+        <button type="button" class="more" data-act="prefs" aria-expanded="${openPrefs === p.id}">Positions</button>
         <button type="button" class="icon" data-act="remove" aria-label="Remove player">&times;</button>
       </span>
+      ${openPrefs === p.id ? prefsHTML(p) : ''}
     </li>`).join('');
 }
 
@@ -591,11 +628,31 @@ $('roster').addEventListener('change', e => {
   changed(true);
 });
 $('roster').addEventListener('click', e => {
-  const btn = e.target.closest('button[data-act="remove"]');
+  const li = e.target.closest('.player');
+  if (!li) return;
+  const p = byId(li.dataset.id);
+  if (!p) return;
+  // Prefer, avoid, clear. Three taps take a position back to where it started.
+  const pos = e.target.closest('.pos-btn');
+  if (pos) {
+    const k = pos.dataset.pos;
+    const wasPref = (p.pref || []).includes(k), wasAvoid = (p.avoid || []).includes(k);
+    p.pref = (p.pref || []).filter(x => x !== k);
+    p.avoid = (p.avoid || []).filter(x => x !== k);
+    if (!wasPref && !wasAvoid) p.pref.push(k);
+    else if (wasPref) p.avoid.push(k);
+    return changed(true);
+  }
+  const btn = e.target.closest('button[data-act]');
   if (!btn) return;
-  const i = s.players.findIndex(p => p.id === btn.closest('.player').dataset.id);
-  s.players.splice(i, 1);
-  changed(true);
+  if (btn.dataset.act === 'prefs') {
+    openPrefs = openPrefs === p.id ? null : p.id;
+    return renderRoster();
+  }
+  if (btn.dataset.act === 'remove') {
+    s.players.splice(s.players.findIndex(x => x.id === p.id), 1);
+    changed(true);
+  }
 });
 $('bulk').addEventListener('click', e => {
   const b = e.target.closest('button[data-bulk]');
@@ -703,7 +760,10 @@ $('paste-add').addEventListener('click', () => pasteList(false));
 function teamLink() {
   const q = new URLSearchParams();
   if (s.team) q.set('team', s.team);
-  q.set('players', s.players.map(p => `${p.num} ${p.name}`.trim() + (p.noP ? '~noP' : '') + (p.noC ? '~noC' : '') + (p.noB ? '~noB' : '')).join('|'));
+  q.set('players', s.players.map(p => `${p.num} ${p.name}`.trim()
+    + (p.noP ? '~noP' : '') + (p.noC ? '~noC' : '') + (p.noB ? '~noB' : '')
+    + ((p.pref || []).length ? '~pref:' + p.pref.join('.') : '')
+    + ((p.avoid || []).length ? '~avoid:' + p.avoid.join('.') : '')).join('|'));
   q.set('of', s.outfield);
   q.set('inn', s.innings);
   return location.origin + location.pathname + '#' + q.toString();
@@ -720,6 +780,12 @@ function readLink() {
     p.noP = flags.includes('noP');
     p.noC = flags.includes('noC');
     p.noB = flags.includes('noB');
+    const spots = tag => {
+      const found = flags.find(f => f.startsWith(tag + ':'));
+      return found ? found.slice(tag.length + 1).split('.').filter(k => POS[k]) : [];
+    };
+    p.pref = spots('pref');
+    p.avoid = spots('avoid');
     return p;
   }).filter(Boolean);
   return { team: q.get('team') || '', players, outfield: q.get('of') === '3' ? 3 : 4, innings: +q.get('inn') || null };
@@ -909,6 +975,7 @@ function checkLineup() {
       if (k === 'P' && p.noP) notes.push(`${shortName(p)} pitches in inning ${i + 1}, but P is off for ${shortName(p)}.`);
       if (k === 'C' && p.noC) notes.push(`${shortName(p)} catches in inning ${i + 1}, but C is off for ${shortName(p)}.`);
       if (k && isBenchKey(k) && p.noB) notes.push(`${shortName(p)} sits in inning ${i + 1}, but Bench is off for ${shortName(p)}.`);
+      if (k && !isBenchKey(k) && (p.avoid || []).includes(k)) notes.push(`${shortName(p)} is at ${POS[k].name.toLowerCase()} in inning ${i + 1}, a position ${shortName(p)} avoids.`);
     }
   }
   const noIF = [], twice = [], sat = {};
@@ -1014,6 +1081,50 @@ $('clear').addEventListener('click', () => {
   changed();
 });
 $('print').addEventListener('click', () => window.print());
+
+// ---- Share ----
+// A phone's own share sheet reaches text, email and everything else the coach
+// already uses. Desktop browsers mostly lack it, so the text goes to the
+// clipboard instead, and a mail draft is the last resort.
+function lineupText() {
+  const where = whereMap(), players = here();
+  const lines = [];
+  const head = [s.team || 'Lineup', s.opponent ? 'vs. ' + s.opponent : '', dateText()].filter(Boolean).join(' — ');
+  lines.push(head, '');
+  for (const p of players) {
+    const spots = [];
+    for (let i = 0; i < s.innings; i++) {
+      const k = where[i][p.id];
+      spots.push(k ? (isBenchKey(k) ? 'Bench' : k) : '—');
+    }
+    lines.push(`${label(p)}: ${spots.join(', ')}`);
+  }
+  lines.push('', 'Innings ' + Array.from({ length: s.innings }, (_, i) => i + 1).join(', '));
+  return lines.join('\n');
+}
+function dateText() {
+  if (!s.date) return '';
+  const d = new Date(s.date + 'T12:00:00');
+  return isNaN(d) ? '' : d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+}
+$('share-lineup').addEventListener('click', async () => {
+  if (!s.grid.some(row => Object.keys(row).length)) return setStatus('The lineup is empty.');
+  const text = lineupText();
+  const title = (s.team || 'Lineup') + (s.opponent ? ' vs. ' + s.opponent : '');
+  if (navigator.share) {
+    try { return await navigator.share({ title, text }); }
+    catch (err) { if (err && err.name === 'AbortError') return; }
+  }
+  try {
+    await navigator.clipboard.writeText(text);
+    const btn = $('share-lineup');
+    btn.textContent = 'Copied';
+    btn.classList.add('copied');
+    setTimeout(() => { btn.textContent = 'Share'; btn.classList.remove('copied'); }, 2500);
+    return;
+  } catch (err) {}
+  location.href = 'mailto:?subject=' + encodeURIComponent(title) + '&body=' + encodeURIComponent(text);
+});
 
 function changed(roster) {
   normalize();
