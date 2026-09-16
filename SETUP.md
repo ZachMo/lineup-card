@@ -96,8 +96,9 @@ rate limit together.
    never proxies, so leave the cloud grey.
 4. Wait for Resend to mark the domain **Verified**. Usually minutes.
 5. In Resend, create an **API key** with send permission.
-6. In Supabase, open **Project Settings > Authentication > SMTP Settings** and
-   turn on custom SMTP:
+6. In Supabase, open **Authentication > Emails > SMTP**, or press Cmd+K and type
+   `SMTP`. The menus move between redesigns; the command palette does not. Turn
+   on custom SMTP:
    - Host `smtp.resend.com`, port `465`
    - Username `resend`
    - Password: the Resend API key
