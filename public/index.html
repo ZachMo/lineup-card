@@ -13,7 +13,7 @@
 <meta name="mobile-web-app-capable" content="yes">
 <meta property="og:title" content="Lineup Card">
 <meta property="og:description" content="Fair youth baseball lineups in one press. Free, no account needed.">
-<meta property="og:image" content="/img/chart.png">
+<meta property="og:image" content="/img/lineup.jpg">
 <meta property="og:type" content="website">
 <style>
   :root {
@@ -22,7 +22,7 @@
     --ink: #10100f; --ink-2: #4b4a46; --muted: #85837d;
     --line: #e3e2da; --border: rgba(11,11,11,.11);
     --accent: #23724a; --accent-ink: #fff; --accent-wash: #e8f1ec;
-    --chalk: #fbefcf; --chalk-edge: #c99a2e;
+    --art: #68d6f5; /* the flat background the illustrations are drawn on */
     --shadow: 0 1px 2px rgba(11,11,11,.05), 0 12px 32px rgba(11,11,11,.09);
   }
   @media (prefers-color-scheme: dark) {
@@ -32,7 +32,6 @@
       --ink: #fff; --ink-2: #c4c3b8; --muted: #8b8982;
       --line: #2c2c2a; --border: rgba(255,255,255,.13);
       --accent: #4fae7c; --accent-ink: #06170d; --accent-wash: #17271e;
-      --chalk: #3a3016; --chalk-edge: #d6a93f;
       --shadow: 0 1px 2px rgba(0,0,0,.4), 0 14px 40px rgba(0,0,0,.45);
     }
   }
@@ -46,7 +45,6 @@
   a { color: var(--accent); }
   .wrap { max-width: 1060px; margin: 0 auto; padding: 0 20px; }
 
-  /* Top bar */
   header {
     position: sticky; top: 0; z-index: 10;
     background: color-mix(in srgb, var(--plane) 88%, transparent);
@@ -57,7 +55,7 @@
   .bar { display: flex; align-items: center; gap: 16px; height: 62px; }
   .brand { display: flex; align-items: center; gap: 10px; font-weight: 800; letter-spacing: -.02em; font-size: 1.05rem; text-decoration: none; color: inherit; }
   .brand img { width: 30px; height: 30px; border-radius: 8px; }
-  .bar .spacer { margin-left: auto; }
+  .spacer { margin-left: auto; }
   .btn {
     display: inline-block; text-decoration: none; font-weight: 700; font-size: .95rem;
     padding: 11px 20px; border-radius: 10px; border: 1px solid transparent;
@@ -67,43 +65,37 @@
   .btn.ghost { background: transparent; color: var(--ink); border-color: var(--border); }
   .btn.big { font-size: 1.05rem; padding: 15px 28px; border-radius: 12px; }
 
-  /* Hero */
-  .hero { padding: 68px 0 46px; }
-  .hero-grid { display: grid; grid-template-columns: minmax(0, 1.05fr) minmax(0, .95fr); gap: 46px; align-items: center; }
+  .hero { padding: 62px 0 44px; }
+  .hero-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.05fr); gap: 44px; align-items: center; }
   h1 { font-size: clamp(2.1rem, 5vw, 3.15rem); line-height: 1.06; letter-spacing: -.033em; margin: 0 0 18px; }
   h1 .said { color: var(--accent); }
   .lede { font-size: 1.16rem; color: var(--ink-2); margin: 0 0 26px; max-width: 34ch; }
   .cta-row { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; }
   .cta-note { font-size: .88rem; color: var(--muted); margin-top: 14px; }
 
-  /* The little field drawing */
-  .field { width: 100%; height: auto; filter: drop-shadow(0 18px 34px rgba(11,11,11,.13)); }
+  /* Illustrations sit on their own flat blue, so the edges disappear. */
+  .art { background: var(--art); border-radius: 16px; overflow: hidden; box-shadow: var(--shadow); }
+  .art img { display: block; width: 100%; height: auto; }
+  .art.banner img { aspect-ratio: 16 / 5; object-fit: cover; object-position: center 78%; }
 
-  /* Shots */
   figure { margin: 0; }
-  .shot {
-    border-radius: 14px; border: 1px solid var(--border); box-shadow: var(--shadow);
-    background: var(--surface); display: block; width: 100%;
-  }
+  .shot { border-radius: 14px; border: 1px solid var(--border); box-shadow: var(--shadow); background: var(--surface); display: block; width: 100%; }
   figcaption { font-size: .88rem; color: var(--muted); margin-top: 10px; text-align: center; }
 
-  /* Bands */
-  section { padding: 62px 0; }
+  section { padding: 60px 0; }
   section.band { background: var(--band); border-block: 1px solid var(--border); }
   h2 { font-size: clamp(1.5rem, 3vw, 2rem); letter-spacing: -.025em; line-height: 1.15; margin: 0 0 14px; }
-  .sub { color: var(--ink-2); max-width: 62ch; margin: 0 0 34px; }
+  .sub { color: var(--ink-2); max-width: 62ch; margin: 0 0 32px; }
   .two-col { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 44px; align-items: center; }
 
-  /* Why */
-  .why { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 24px; margin-top: 8px; }
+  .why { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 24px; margin-top: 30px; }
   .why div { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 22px; }
   .why h3 { margin: 0 0 8px; font-size: 1.02rem; }
   .why p { margin: 0; color: var(--ink-2); font-size: .96rem; }
 
-  /* Features */
-  .feats { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px 34px; }
+  .feats { display: grid; gap: 0; }
   .feat { display: flex; gap: 14px; padding: 16px 0; border-top: 1px solid var(--line); }
-  .feat:nth-child(1), .feat:nth-child(2) { border-top: 0; }
+  .feat:first-child { border-top: 0; }
   .feat .mark {
     flex: none; width: 34px; height: 34px; border-radius: 9px; background: var(--accent-wash);
     color: var(--accent); display: grid; place-items: center; font-weight: 800; font-size: .95rem;
@@ -111,7 +103,6 @@
   .feat h3 { margin: 2px 0 4px; font-size: 1rem; }
   .feat p { margin: 0; color: var(--ink-2); font-size: .95rem; }
 
-  /* Steps */
   .steps { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 26px; counter-reset: step; }
   .step { counter-increment: step; }
   .step h3 { font-size: 1.05rem; margin: 12px 0 6px; }
@@ -122,23 +113,21 @@
     background: var(--accent); color: var(--accent-ink); font-weight: 800;
   }
 
-  /* Tip */
   .tip { text-align: center; }
-  .tip .btn { margin-top: 8px; }
   .tip p { color: var(--ink-2); max-width: 52ch; margin: 0 auto 6px; }
+  .tip .btn { margin-top: 10px; }
 
-  footer { padding: 40px 0 60px; color: var(--muted); font-size: .88rem; }
+  footer { padding: 38px 0 60px; color: var(--muted); font-size: .88rem; }
   footer .row { display: flex; flex-wrap: wrap; gap: 8px 22px; align-items: center; }
   footer a { color: var(--ink-2); }
 
   @media (max-width: 860px) {
-    .hero-grid, .two-col { grid-template-columns: 1fr; gap: 30px; }
+    .hero-grid, .two-col { grid-template-columns: 1fr; gap: 28px; }
     .why, .steps { grid-template-columns: 1fr; }
-    .feats { grid-template-columns: 1fr; }
-    .feat:nth-child(2) { border-top: 1px solid var(--line); }
-    .hero { padding: 42px 0 30px; }
-    section { padding: 46px 0; }
+    .hero { padding: 38px 0 26px; }
+    section { padding: 44px 0; }
     .lede { max-width: none; }
+    .art.banner img { aspect-ratio: 4 / 3; }
   }
 </style>
 </head>
@@ -163,35 +152,8 @@
       </div>
       <p class="cta-note">Free. No account needed. Works on the phone in your pocket at the field.</p>
     </div>
-    <div>
-      <!-- A drawing, not a photo. Swap in a team photo here when you have one you
-           have permission to publish. -->
-      <svg class="field" viewBox="0 0 520 420" role="img" aria-label="A baseball field with every position filled">
-        <defs>
-          <linearGradient id="grass" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0" stop-color="#2f8d5c"/><stop offset="1" stop-color="#1e6440"/>
-          </linearGradient>
-        </defs>
-        <rect width="520" height="420" rx="18" fill="url(#grass)"/>
-        <path d="M260 366 L64 170 A 268 268 0 0 1 456 170 Z" fill="#ffffff" opacity=".07"/>
-        <path d="M260 340 L150 230 L260 120 L370 230 Z" fill="#c98b4b" opacity=".85"/>
-        <path d="M260 330 L158 230 L260 130 L362 230 Z" fill="none" stroke="#fff" stroke-width="3" opacity=".85"/>
-        <circle cx="260" cy="230" r="26" fill="#c98b4b"/>
-        <g fill="#fcfcfb" stroke="#123f28" stroke-width="2">
-          <circle cx="260" cy="222" r="12"/><circle cx="260" cy="332" r="12"/>
-          <circle cx="356" cy="228" r="12"/><circle cx="164" cy="228" r="12"/>
-          <circle cx="260" cy="128" r="12"/><circle cx="206" cy="176" r="12"/>
-          <circle cx="112" cy="116" r="12"/><circle cx="204" cy="74" r="12"/>
-          <circle cx="316" cy="74" r="12"/><circle cx="408" cy="116" r="12"/>
-        </g>
-        <g fill="#123f28" font-family="system-ui, sans-serif" font-size="10" font-weight="800" text-anchor="middle">
-          <text x="260" y="226">P</text><text x="260" y="336">C</text>
-          <text x="356" y="232">1B</text><text x="164" y="232">3B</text>
-          <text x="260" y="132">2B</text><text x="206" y="180">SS</text>
-          <text x="112" y="120">LF</text><text x="204" y="78">LC</text>
-          <text x="316" y="78">RC</text><text x="408" y="120">RF</text>
-        </g>
-      </svg>
+    <div class="art">
+      <img src="/img/lineup.jpg" alt="Young players gathered around a batting lineup and a field plan" width="1400" height="763">
     </div>
   </div>
 </div>
@@ -200,6 +162,9 @@
   <div class="wrap">
     <h2>Why a coach needs this</h2>
     <p class="sub">Youth baseball asks a volunteer to be fair to eleven families at once, before 8am, with a pen.</p>
+    <div class="art banner">
+      <img src="/img/team.jpg" alt="A coach with a clipboard talking to a youth baseball team" width="1400" height="763" loading="lazy">
+    </div>
     <div class="why">
       <div>
         <h3>The rules fight each other</h3>
@@ -223,14 +188,14 @@
       <div>
         <h2>One press, a whole game</h2>
         <p class="sub">Innings run across the top and positions down the side, the way a card should read. Press <b>Build lineup</b> and every spot fills at once, following your league's rules.</p>
-        <div class="feats" style="grid-template-columns:1fr">
+        <div class="feats">
           <div class="feat"><span class="mark">IF</span><div><h3>Infield for everyone</h3><p>Every player gets an infield inning in the first four. Pick a different inning, or turn the rule off if your league has none.</p></div></div>
           <div class="feat"><span class="mark">=</span><div><h3>Even bench time</h3><p>Nobody sits twice before everyone sits once, and nobody sits two innings in a row.</p></div></div>
           <div class="feat"><span class="mark">✎</span><div><h3>Your spots stay put</h3><p>Set the first inning or two by hand. Build fills the rest around them.</p></div></div>
         </div>
       </div>
       <figure>
-        <img class="shot" src="/img/chart.png" alt="A six inning lineup chart with a player at each position and a bench row" width="1240" height="900" loading="lazy">
+        <img class="shot" src="/img/chart.png" alt="A six inning lineup chart with a player at each position and a bench row" width="1240" height="790" loading="lazy">
         <figcaption>The card, ready to print.</figcaption>
       </figure>
     </div>
@@ -241,12 +206,12 @@
   <div class="wrap">
     <div class="two-col">
       <figure>
-        <img class="shot" src="/img/roster.png" alt="The team list on a phone, with each player's number, name and settings" width="430" height="940" loading="lazy" style="max-width:340px;margin:0 auto;display:block">
+        <img class="shot" src="/img/roster.png" alt="The team list on a phone, with each player's number, name and settings" width="500" height="960" loading="lazy" style="max-width:330px;margin:0 auto;display:block">
         <figcaption>Your team, on your phone.</figcaption>
       </figure>
       <div>
         <h2>Built for the dugout, not the office</h2>
-        <div class="feats" style="grid-template-columns:1fr">
+        <div class="feats">
           <div class="feat"><span class="mark">↕</span><div><h3>Drag to set the batting order</h3><p>Move a player with your thumb. The list is the batting order, and it prints with the card.</p></div></div>
           <div class="feat"><span class="mark">◐</span><div><h3>Mark who is here</h3><p>One tap when a player misses a game. Build works around them, and around anyone who should not pitch, catch or sit.</p></div></div>
           <div class="feat"><span class="mark">⚡</span><div><h3>Works with no signal</h3><p>Your team lives in your phone. A dead spot at the field changes nothing.</p></div></div>
