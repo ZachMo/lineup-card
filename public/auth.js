@@ -27,12 +27,19 @@
   const css = document.createElement('style');
   css.textContent = `
     .acct-panel {
-      display: grid; gap: 10px; padding: 14px; width: 100%; max-width: 360px;
+      display: grid; gap: 10px; padding: 16px; width: 100%; max-width: 360px;
       background: var(--surface); border: 1px solid var(--border); border-radius: 12px;
       box-shadow: 0 10px 30px rgba(0,0,0,.10); text-align: left;
     }
-    .acct-panel h3 { margin: 0; font-size: .95rem; }
-    .acct-panel input { width: 100%; }
+    .acct-panel h3 { margin: 0; font-size: 1rem; }
+    /* 16px keeps iOS from zooming the page when a field takes focus. */
+    .acct-panel input { width: 100%; font-size: 16px; padding: 11px 12px; }
+    .acct-panel .go button { padding: 11px 14px; font-size: .95rem; }
+    @media (max-width: 720px) {
+      .acct-panel { max-width: none; }
+      .acct-links { gap: 10px 16px; font-size: .85rem; }
+      .acct-links button { font-size: .85rem; }
+    }
     .acct-panel .go { display: flex; gap: 8px; flex-wrap: wrap; }
     .acct-panel .go button { flex: 1 1 auto; }
     .acct-links { display: flex; flex-wrap: wrap; gap: 4px 14px; }

@@ -52,7 +52,9 @@
     background: var(--surface); border: 1px solid var(--border);
     border-radius: 14px; padding: 18px;
   }
-  .top { display: grid; grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr); gap: 16px; margin-bottom: 16px; }
+  /* align-items:start stops the folded settings panel from stretching to match
+     the team list and leaving a tall empty box. */
+  .top { display: grid; grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr); gap: 16px; margin-bottom: 16px; align-items: start; }
   @media (max-width: 820px) { .top { grid-template-columns: 1fr; } }
 
   label.field { display: grid; gap: 4px; font-size: .8rem; color: var(--ink-2); font-weight: 600; }
@@ -210,6 +212,74 @@
   }
   .acct input { width: 15em; }
 
+  /* Folded sections. A new coach sees a team list and one button. Everything
+     else waits behind a summary line until someone goes looking for it. */
+  details.fold { border-top: 1px solid var(--line); }
+  details.fold > summary {
+    cursor: pointer; list-style: none; display: flex; align-items: center; gap: 10px;
+    padding: 12px 0; font-weight: 700; font-size: .95rem;
+  }
+  details.fold > summary::-webkit-details-marker { display: none; }
+  details.fold > summary::after { content: '⌄'; margin-left: auto; color: var(--muted); font-size: 1.1rem; line-height: 1; }
+  details.fold[open] > summary::after { content: '⌃'; }
+  details.fold .fold-sum { font-weight: 500; font-size: .84rem; color: var(--muted); }
+  details.fold .body { display: grid; gap: 12px; padding: 2px 0 14px; }
+
+  /* The overflow menu for actions a coach needs now and then. */
+  .more-menu { position: relative; }
+  .more-menu > summary {
+    cursor: pointer; list-style: none; display: inline-flex; align-items: center;
+    padding: 7px 13px; border: 1px solid var(--border); border-radius: 8px;
+    font-size: .88rem; font-weight: 600; background: var(--surface);
+  }
+  .more-menu > summary::-webkit-details-marker { display: none; }
+  .more-menu[open] > summary { background: var(--wash); }
+  .more-menu .sheet {
+    position: absolute; right: 0; top: calc(100% + 6px); z-index: 6;
+    display: grid; gap: 6px; padding: 8px; min-width: 176px;
+    background: var(--surface); border: 1px solid var(--border); border-radius: 12px;
+    box-shadow: 0 12px 30px rgba(0,0,0,.16);
+  }
+  .more-menu .sheet button { width: 100%; text-align: left; }
+
+  .player .opts { font-size: .78rem; font-weight: 700; padding: 6px 11px; border-radius: 8px; color: var(--muted); }
+  .player .opts[aria-expanded=true] { background: var(--wash); color: var(--ink); }
+  .player .tag { font-size: .68rem; font-weight: 800; padding: 3px 8px; border-radius: 999px; background: var(--warn-wash); color: var(--warn); }
+  .prefs .chips { display: flex; flex-wrap: wrap; gap: 6px; }
+  .prefs .sub2 { font-size: .74rem; font-weight: 700; color: var(--muted); }
+
+  /* Phone: one inning at a time. The grid stays for desktop and for print. */
+  #inning-view { display: none; }
+  .inn-head { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
+  .inn-head .who { font-weight: 800; font-size: 1.05rem; flex: 1 1 auto; text-align: center; }
+  .inn-step { padding: 9px 16px; font-size: 1.1rem; line-height: 1; }
+  .inn-step[disabled] { opacity: .35; }
+  .inn-rows { border: 1px solid var(--border); border-radius: 12px; overflow: hidden; background: var(--surface); }
+  .inn-row { display: flex; align-items: center; border-bottom: 1px solid var(--line); min-height: 54px; }
+  .inn-row:last-child { border-bottom: 0; }
+  .inn-row.bench { background: var(--bench); }
+  .inn-row.set { background: var(--set); box-shadow: inset 3px 0 0 var(--set-edge); }
+  .inn-row .lab { flex: none; width: 4.4em; padding-left: 12px; font-weight: 800; font-size: .95rem; }
+  .inn-row .lab small { display: block; font-size: .66rem; font-weight: 500; color: var(--muted); }
+  .inn-row select {
+    flex: 1 1 auto; appearance: none; -webkit-appearance: none; border: 0;
+    background-color: transparent; font: inherit; font-size: 16px; color: var(--ink);
+    padding: 14px 10px; width: 100%;
+  }
+  .inn-row select.empty { color: var(--muted); }
+
+  @media (max-width: 720px) {
+    #chart { display: none; }
+    #inning-view { display: block; }
+    /* 16px keeps iOS from zooming when a field takes focus. */
+    input, select, textarea { font-size: 16px; }
+    .wrap { padding: 18px 14px 56px; }
+    .players-view { display: none; }
+    .lineup-head .sub { width: 100%; }
+    h1 { font-size: 1.5rem; }
+    .lede { display: none; }
+  }
+
   @media print {
     @page { size: landscape; margin: .35in; }
     :root {
@@ -249,7 +319,7 @@
   <div class="no-print">
     <div id="account" class="no-print"></div>
     <h1>Lineup Card</h1>
-    <p class="lede">Put a player at each position for every inning, then print it. Set any spots you want by hand. Build fills in the rest.</p>
+    <p class="lede">Put your players in, press Build, and print the card.</p>
   </div>
 
   <div class="top no-print">
@@ -259,36 +329,46 @@
         <label class="field" style="flex:1 1 14em">Team name
           <input type="text" id="team" placeholder="8U Tigers" autocomplete="off">
         </label>
-        <button id="share" type="button" style="align-self:flex-end">Copy team link</button>
       </div>
-      <p class="hint">The list is the batting order. Drag a player by the dots to move them. <b>Here</b> means the player is at today's game. Turn off <b>P</b>, <b>C</b> or <b>Bench</b> for a player who should not pitch, catch or sit.</p>
-      <div class="bulk row" id="bulk">
-        <span class="grp"><span>Pitch</span>
-          <button type="button" data-bulk="noP" data-val="false">All</button>
-          <button type="button" data-bulk="noP" data-val="true">None</button></span>
-        <span class="grp"><span>Catch</span>
-          <button type="button" data-bulk="noC" data-val="false">All</button>
-          <button type="button" data-bulk="noC" data-val="true">None</button></span>
-        <span class="grp"><span>Bench</span>
-          <button type="button" data-bulk="noB" data-val="false">All</button>
-          <button type="button" data-bulk="noB" data-val="true">None</button></span>
-      </div>
+      <p class="hint">Drag a player by the dots to change the batting order. Tap <b>Options</b> for anyone who is out today, or who should not pitch, catch or sit.</p>
       <ol class="roster" id="roster"></ol>
       <div class="row">
         <button id="add" type="button">Add player</button>
       </div>
-      <details class="paste" id="paste">
-        <summary>Paste a list of players</summary>
-        <textarea id="paste-text" placeholder="1. #99 Maverick&#10;2. #27 Colton&#10;3. #1 Severian"></textarea>
-        <div class="row" style="margin-top:8px">
-          <button id="paste-replace" type="button" class="primary">Replace the list</button>
-          <button id="paste-add" type="button">Add to the list</button>
+
+      <details class="fold" id="team-tools">
+        <summary>Team tools</summary>
+        <div class="body">
+          <div class="row">
+            <button id="share" type="button">Copy team link</button>
+          </div>
+          <div class="bulk row" id="bulk">
+            <span class="grp"><span>Pitch</span>
+              <button type="button" data-bulk="noP" data-val="false">All</button>
+              <button type="button" data-bulk="noP" data-val="true">None</button></span>
+            <span class="grp"><span>Catch</span>
+              <button type="button" data-bulk="noC" data-val="false">All</button>
+              <button type="button" data-bulk="noC" data-val="true">None</button></span>
+            <span class="grp"><span>Bench</span>
+              <button type="button" data-bulk="noB" data-val="false">All</button>
+              <button type="button" data-bulk="noB" data-val="true">None</button></span>
+          </div>
+          <details class="paste" id="paste">
+            <summary>Paste a list of players</summary>
+            <textarea id="paste-text" placeholder="1. #99 Maverick&#10;2. #27 Colton&#10;3. #1 Severian"></textarea>
+            <div class="row" style="margin-top:8px">
+              <button id="paste-replace" type="button" class="primary">Replace the list</button>
+              <button id="paste-add" type="button">Add to the list</button>
+            </div>
+          </details>
         </div>
       </details>
     </section>
 
-    <section class="panel settings" aria-labelledby="game-h">
-      <h2 id="game-h" style="margin:0">Game</h2>
+    <section class="panel" aria-labelledby="game-h">
+      <details class="fold" id="game-fold" style="border-top:0">
+        <summary><span id="game-h">Game settings</span><span class="fold-sum" id="game-sum"></span></summary>
+        <div class="body settings">
       <div class="two">
         <label class="field">Opponent
           <input type="text" id="opp" placeholder="Opponent" autocomplete="off">
@@ -315,6 +395,8 @@
         <span>Pitcher and catcher count as infield</span></label>
       <label class="check"><input type="checkbox" id="print-players">
         <span>Print the player view on a second page</span></label>
+        </div>
+      </details>
     </section>
   </div>
 
@@ -326,14 +408,20 @@
       </div>
       <div class="row no-print">
         <button id="build" type="button" class="primary">Build lineup</button>
-        <button id="check" type="button">Check</button>
-        <button id="undo" type="button" disabled>Undo</button>
-        <button id="clear" type="button">Clear</button>
         <button id="share-lineup" type="button">Share</button>
         <button id="print" type="button">Print</button>
+        <details class="more-menu" id="more-menu">
+          <summary>More</summary>
+          <div class="sheet">
+            <button id="check" type="button">Check the rules</button>
+            <button id="undo" type="button" disabled>Undo</button>
+            <button id="clear" type="button">Clear the lineup</button>
+          </div>
+        </details>
       </div>
     </div>
     <div id="status" class="status warn" role="status" hidden></div>
+    <div id="inning-view" class="no-print"></div>
     <div class="scroll" id="chart"></div>
     <div class="batting print-only" id="batting"></div>
     <div class="players-view" id="players-view"></div>
@@ -576,8 +664,15 @@ function prefsHTML(p) {
       aria-label="${esc(shortName(p))} ${said} ${POS[k].name}">${k}</button>`;
   }).join('');
   return `<div class="prefs">
+    <div class="chips">
+      <label class="chip" title="At today's game"><input type="checkbox" data-f="here" ${p.here !== false ? 'checked' : ''}><span>Here today</span></label>
+      <label class="chip" title="Can pitch"><input type="checkbox" data-f="canP" ${!p.noP ? 'checked' : ''}><span>Can pitch</span></label>
+      <label class="chip" title="Can catch"><input type="checkbox" data-f="canC" ${!p.noC ? 'checked' : ''}><span>Can catch</span></label>
+      <label class="chip" title="Can sit on the bench"><input type="checkbox" data-f="canB" ${!p.noB ? 'checked' : ''}><span>Can sit</span></label>
+    </div>
+    <div class="sub2">Positions</div>
     <div class="row2">${btns}</div>
-    <div class="hint2">Tap once to prefer a position, again to avoid it, again to clear. Build leans this way, but the fairness rules still come first.</div>
+    <div class="hint2">Tap once to prefer, again to avoid, again to clear. Build leans this way, but the fairness rules still come first.</div>
   </div>`;
 }
 
@@ -598,12 +693,9 @@ function renderRoster() {
       <input type="text" class="num" data-f="num" value="${esc(p.num)}" placeholder="#" inputmode="numeric" aria-label="Jersey number">
       <input type="text" class="name" data-f="name" value="${esc(p.name)}" placeholder="Name" aria-label="Name">
       <span class="tail">
-        <label class="chip" title="At today's game"><input type="checkbox" data-f="here" ${p.here !== false ? 'checked' : ''}><span>Here</span></label>
-        <label class="chip" title="Can pitch"><input type="checkbox" data-f="canP" ${!p.noP ? 'checked' : ''}><span>P</span></label>
-        <label class="chip" title="Can catch"><input type="checkbox" data-f="canC" ${!p.noC ? 'checked' : ''}><span>C</span></label>
-        <label class="chip" title="Can sit on the bench"><input type="checkbox" data-f="canB" ${!p.noB ? 'checked' : ''}><span>Bench</span></label>
-        <button type="button" class="more" data-act="prefs" aria-expanded="${openPrefs === p.id}">Positions</button>
-        <button type="button" class="icon" data-act="remove" aria-label="Remove player">&times;</button>
+        ${p.here === false ? '<span class="tag">Out</span>' : ''}
+        <button type="button" class="opts" data-act="prefs" aria-expanded="${openPrefs === p.id}">Options</button>
+        <button type="button" class="icon" data-act="remove" aria-label="Remove ${esc(shortName(p))}">&times;</button>
       </span>
       ${openPrefs === p.id ? prefsHTML(p) : ''}
     </li>`).join('');
@@ -829,6 +921,11 @@ function renderSettings() {
   document.querySelectorAll('[data-of]').forEach(b => b.setAttribute('aria-pressed', +b.dataset.of === s.outfield));
   $('pc').checked = s.pcInfield;
   $('print-players').checked = s.printPlayers;
+  // The folded panel still says what it holds.
+  const bits = [`${s.innings} innings`, `${s.outfield} outfielders`,
+    early() ? `infield by inning ${early()}` : 'no infield rule'];
+  if (s.opponent) bits.unshift('vs. ' + s.opponent);
+  $('game-sum').textContent = bits.join(' · ');
 }
 $('team').addEventListener('input', e => { s.team = e.target.value; save(); renderHead(); });
 $('opp').addEventListener('input', e => { s.opponent = e.target.value; save(); renderHead(); });
@@ -858,6 +955,7 @@ function renderLineup() {
 
   if (!players.length) {
     $('chart').innerHTML = '';
+    $('inning-view').innerHTML = '';
     $('players-view').innerHTML = '';
     $('batting').innerHTML = '';
     setStatus('');
@@ -900,12 +998,43 @@ function renderLineup() {
   }
   h += '</tbody></table>';
   $('chart').innerHTML = h;
+  renderInningView(ks, players, where);
 
   $('batting').innerHTML = `<h3>Batting order</h3><ol>${players.map(p => `<li>${esc(label(p))}</li>`).join('')}</ol>`;
 
   renderPlayersView(ks, where);
   // Any edit makes an open check out of date, so hide it until Check runs again.
   setStatus('');
+}
+
+// The phone view. A whole grid will not fit a phone, so a coach sees one inning
+// at a time, with rows big enough for a thumb.
+let viewInning = 0;
+function renderInningView(ks, players, where) {
+  const inn = s.innings;
+  viewInning = Math.max(0, Math.min(inn - 1, viewInning));
+  const i = viewInning, filled = Object.values(s.grid[i] || {});
+  const allSet = filled.length > 0 && filled.every(c => c.lock);
+  let h = `<div class="inn-head">
+    <button type="button" class="inn-step" data-step="-1" ${i === 0 ? 'disabled' : ''} aria-label="Previous inning">&lsaquo;</button>
+    <span class="who">Inning ${i + 1} of ${inn}</span>
+    <button type="button" class="lockcol" data-inn="${i}" aria-pressed="${allSet}">${allSet ? 'Kept' : 'Keep'}</button>
+    <button type="button" class="inn-step" data-step="1" ${i === inn - 1 ? 'disabled' : ''} aria-label="Next inning">&rsaquo;</button>
+  </div><div class="inn-rows">`;
+  for (const k of ks) {
+    const c = s.grid[i][k], p = c && byId(c.pid), isB = isBenchKey(k);
+    const opts = players.map(q => {
+      const at = where[i][q.id];
+      const note = at && at !== k ? ` (${isBenchKey(at) ? 'bench' : at})` : '';
+      return `<option value="${q.id}" ${p && p.id === q.id ? 'selected' : ''}>${esc(label(q) + note)}</option>`;
+    }).join('');
+    h += `<div class="inn-row${isB ? ' bench' : ''}${c && c.lock ? ' set' : ''}">
+      <span class="lab">${isB ? 'Bench' : k}${isB ? '' : `<small>${POS[k].name}</small>`}</span>
+      <select data-inn="${i}" data-slot="${k}" class="${p ? '' : 'empty'}"
+        aria-label="Inning ${i + 1}, ${posName(k)}"><option value="">—</option>${opts}</select>
+    </div>`;
+  }
+  $('inning-view').innerHTML = h + '</div>';
 }
 
 // Per inning: player id -> the slot they are in.
@@ -1022,7 +1151,9 @@ $('check').addEventListener('click', () => {
   setStatus(`${title}<ul>${notes.map(n => `<li>${esc(n)}</li>`).join('')}</ul>`);
 });
 
-$('chart').addEventListener('change', e => {
+// The grid and the phone view use the same markup for a spot, so they share
+// these handlers.
+function onSlotChange(e) {
   const sel = e.target.closest('select[data-slot]');
   if (!sel) return;
   const i = +sel.dataset.inn, k = sel.dataset.slot, pid = sel.value;
@@ -1039,8 +1170,13 @@ $('chart').addEventListener('change', e => {
     row[k] = { pid, lock: true };
   }
   changed();
-});
-$('chart').addEventListener('click', e => {
+}
+function onChartClick(e) {
+  const step = e.target.closest('.inn-step');
+  if (step) {
+    viewInning += +step.dataset.step;
+    return renderLineup();
+  }
   const btn = e.target.closest('.lockcol');
   if (!btn) return;
   const row = s.grid[+btn.dataset.inn], cells = Object.values(row);
@@ -1049,6 +1185,10 @@ $('chart').addEventListener('click', e => {
   const lock = !cells.every(c => c.lock);
   cells.forEach(c => { c.lock = lock; });
   changed();
+}
+['chart', 'inning-view'].forEach(id => {
+  $(id).addEventListener('change', onSlotChange);
+  $(id).addEventListener('click', onChartClick);
 });
 
 $('build').addEventListener('click', () => {
