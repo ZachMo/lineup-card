@@ -1,0 +1,7 @@
+# Files that live in the repo but do not belong on the site.
+README.md
+SETUP.md
+schema.sql
+wrangler.toml
+.assetsignore
+.gitignore

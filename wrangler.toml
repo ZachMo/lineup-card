@@ -1,0 +1,9 @@
+# Cloudflare deploy settings.
+#
+# This site is plain files: no server code, no build step. The lines below tell
+# Cloudflare to serve the folder as it is. Every push to main redeploys.
+name = "lineup-card"
+compatibility_date = "2026-09-15"
+
+[assets]
+directory = "./"
