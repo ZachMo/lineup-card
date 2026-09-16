@@ -1,0 +1,1029 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Lineup Card</title>
+<style>
+  :root {
+    color-scheme: light;
+    --surface: #fcfcfb; --plane: #f4f4f0;
+    --ink: #0b0b0b; --ink-2: #52514e; --muted: #898781;
+    --line: #e1e0d9; --border: rgba(11,11,11,.12); --wash: rgba(11,11,11,.04);
+    --accent: #23724a; --accent-ink: #fff; --accent-wash: rgba(35,114,74,.10);
+    --set: #fbefcf; --set-edge: #c99a2e;
+    --bench: #f0efe9;
+    --warn: #a3461b; --warn-wash: rgba(179,84,30,.10);
+    --good: #23724a;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      color-scheme: dark;
+      --surface: #1a1a19; --plane: #0d0d0d;
+      --ink: #fff; --ink-2: #c3c2b7; --muted: #898781;
+      --line: #2c2c2a; --border: rgba(255,255,255,.14); --wash: rgba(255,255,255,.06);
+      --accent: #4fae7c; --accent-ink: #06170d; --accent-wash: rgba(79,174,124,.14);
+      --set: #3a3016; --set-edge: #d6a93f;
+      --bench: #222220;
+      --warn: #e08b4c; --warn-wash: rgba(224,139,76,.14);
+      --good: #4fae7c;
+    }
+  }
+  * { box-sizing: border-box; min-width: 0; }
+  body {
+    margin: 0; background: var(--plane); color: var(--ink);
+    font: 15px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+  .wrap { max-width: 1180px; margin: 0 auto; padding: 28px 16px 64px; }
+  a { color: var(--accent); }
+  .back { font-size: .85rem; color: var(--ink-2); text-decoration: none; }
+  h1 { font-size: 1.7rem; letter-spacing: -0.02em; margin: 6px 0 4px; }
+  .lede { color: var(--ink-2); margin: 0 0 22px; }
+  h2 { font-size: 1.05rem; letter-spacing: -0.01em; margin: 0 0 12px; }
+  .panel {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 14px; padding: 18px;
+  }
+  .top { display: grid; grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr); gap: 16px; margin-bottom: 16px; }
+  @media (max-width: 820px) { .top { grid-template-columns: 1fr; } }
+
+  label.field { display: grid; gap: 4px; font-size: .8rem; color: var(--ink-2); font-weight: 600; }
+  input[type=text], input[type=date], select.plain, textarea {
+    font: inherit; color: var(--ink); background: var(--plane);
+    border: 1px solid var(--border); border-radius: 8px; padding: 7px 9px; width: 100%;
+  }
+  textarea { min-height: 150px; resize: vertical; font-size: .9rem; }
+  input:focus-visible, select:focus-visible, textarea:focus-visible, button:focus-visible {
+    outline: 2px solid var(--accent); outline-offset: 1px;
+  }
+
+  button {
+    font: inherit; font-size: .88rem; font-weight: 600; cursor: pointer;
+    color: var(--ink); background: var(--surface);
+    border: 1px solid var(--border); border-radius: 8px; padding: 7px 12px;
+  }
+  button:hover { background: var(--wash); }
+  button:disabled { opacity: .45; cursor: default; }
+  button.primary { background: var(--accent); color: var(--accent-ink); border-color: transparent; }
+  button.primary:hover { filter: brightness(1.06); }
+  button.icon { padding: 4px 8px; font-size: .85rem; line-height: 1; color: var(--ink-2); }
+  .row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+
+  /* Roster */
+  .hint { font-size: .8rem; color: var(--muted); margin: 0 0 10px; }
+  .roster { list-style: none; margin: 0 0 12px; padding: 0; display: grid; gap: 6px; }
+  .player {
+    display: flex; flex-wrap: wrap; align-items: center; gap: 6px;
+    padding: 6px; border-radius: 10px; background: var(--plane);
+  }
+  .player.out { opacity: .55; }
+  .grip {
+    display: flex; align-items: center; justify-content: center; flex: none;
+    width: 26px; height: 34px; padding: 0; border: 0; background: transparent;
+    color: var(--muted); cursor: grab; touch-action: none;
+  }
+  .grip:hover { background: var(--wash); color: var(--ink); }
+  .roster.sorting .player { transition: transform .15s ease; }
+  .roster.sorting .player.dragging {
+    transition: none; position: relative; z-index: 3; opacity: 1;
+    background: var(--surface); box-shadow: 0 8px 20px rgba(0,0,0,.18), 0 0 0 1px var(--accent);
+  }
+  .roster.sorting, .roster.sorting * { cursor: grabbing !important; user-select: none; -webkit-user-select: none; }
+  .bulk { font-size: .8rem; color: var(--ink-2); font-weight: 600; margin: 0 0 10px; gap: 6px 16px; }
+  .bulk .grp { display: inline-flex; align-items: center; gap: 4px; }
+  .bulk .grp > span { margin-right: 2px; }
+  .bulk button { padding: 3px 10px; font-size: .78rem; }
+  .player .bat { width: 1.6em; text-align: right; font-weight: 700; color: var(--muted); font-size: .85rem; }
+  .player .num { width: 3.6em; flex: none; }
+  .player .name { flex: 1 1 8em; }
+  .player .tail { display: flex; gap: 4px; align-items: center; margin-left: auto; }
+  .chip { position: relative; display: inline-flex; }
+  .chip input { position: absolute; opacity: 0; inset: 0; margin: 0; cursor: pointer; }
+  .chip span {
+    font-size: .75rem; font-weight: 700; padding: 4px 8px; border-radius: 999px;
+    border: 1px solid var(--border); color: var(--muted); user-select: none;
+  }
+  .chip input:checked + span { background: var(--accent-wash); color: var(--accent); border-color: transparent; }
+  .chip input:focus-visible + span { outline: 2px solid var(--accent); outline-offset: 1px; }
+  details.paste { margin-top: 12px; }
+  details.paste summary { cursor: pointer; font-weight: 600; font-size: .88rem; color: var(--ink-2); }
+  details.paste[open] summary { margin-bottom: 8px; }
+
+  .settings { display: grid; gap: 12px; align-content: start; }
+  .two { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .seg { display: inline-flex; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
+  .seg button { border: 0; border-radius: 0; padding: 6px 12px; font-weight: 600; }
+  .seg button[aria-pressed=true] { background: var(--accent); color: var(--accent-ink); }
+  .check { display: flex; gap: 8px; align-items: flex-start; font-size: .88rem; }
+  .check input { margin-top: 3px; accent-color: var(--accent); }
+
+  /* Lineup */
+  .lineup-head { display: flex; flex-wrap: wrap; gap: 10px 16px; align-items: flex-end; justify-content: space-between; margin-bottom: 10px; }
+  .lineup-head h2 { margin: 0; font-size: 1.25rem; }
+  .lineup-head .sub { color: var(--ink-2); font-size: .9rem; }
+  .status { margin: 0 0 12px; padding: 9px 12px; border-radius: 10px; font-size: .88rem; }
+  .status.warn { background: var(--warn-wash); color: var(--warn); }
+  .status.good { background: var(--accent-wash); color: var(--good); }
+  .status ul { margin: 4px 0 0; padding-left: 18px; }
+
+  .scroll { overflow-x: auto; -webkit-overflow-scrolling: touch; border: 1px solid var(--border); border-radius: 12px; background: var(--surface); }
+  table { border-collapse: collapse; width: 100%; }
+  table.chart { table-layout: fixed; min-width: calc(128px + var(--inn) * 112px); }
+  table.chart col.lab { width: 128px; }
+  .chart th, .chart td { border-bottom: 1px solid var(--line); border-right: 1px solid var(--line); padding: 0; }
+  .chart tr > :last-child { border-right: 0; }
+  .chart tbody tr:last-child > * { border-bottom: 0; }
+  .chart thead th { padding: 6px 4px; font-size: .78rem; color: var(--ink-2); font-weight: 600; background: var(--plane); }
+  .chart thead .inn { font-size: .95rem; color: var(--ink); font-weight: 700; }
+  .chart .corner { text-align: left; padding-left: 12px; }
+  .chart tbody th {
+    text-align: left; padding: 6px 10px 6px 12px; background: var(--surface);
+    position: sticky; left: 0; z-index: 1;
+  }
+  .chart thead th.corner { position: sticky; left: 0; z-index: 2; }
+  .chart .abbr { display: block; font-weight: 800; font-size: .95rem; }
+  .chart .full { display: block; font-size: .72rem; color: var(--muted); font-weight: 500; }
+  .chart tr.bench-first > * { border-top: 2px solid var(--border); }
+  .chart tr.bench td, .chart tr.bench th { background: var(--bench); }
+  .chart td { position: relative; height: 44px; background: var(--surface); }
+  .chart tr td.set { background: var(--set); box-shadow: inset 3px 0 0 var(--set-edge); }
+  /* The select needs a solid background. Chrome on a Mac draws the open menu with the
+     select's colors, so a transparent select gives white names on a white menu in dark mode. */
+  .chart select {
+    appearance: none; -webkit-appearance: none; border: 0; background-color: inherit;
+    font: inherit; font-size: .88rem; color: var(--ink); width: 100%; height: 100%;
+    padding: 0 8px; cursor: pointer; text-overflow: ellipsis;
+  }
+  .chart select.empty { color: var(--muted); }
+  .chart option { color: var(--ink); background-color: var(--surface); }
+  .chart td:hover { box-shadow: inset 0 0 0 2px var(--border); }
+  .chart tr td.set:hover { box-shadow: inset 3px 0 0 var(--set-edge), inset 0 0 0 2px var(--border); }
+  .print-name { display: none; }
+  .lockcol {
+    margin-top: 4px; padding: 2px 7px; font-size: .7rem; font-weight: 700; border-radius: 999px;
+    color: var(--ink-2);
+  }
+  .lockcol[aria-pressed=true] { background: var(--set); border-color: var(--set-edge); color: var(--ink); }
+
+  .players-view { margin-top: 18px; }
+  .players-view h3 { font-size: .95rem; margin: 0 0 8px; }
+  table.bp { font-size: .85rem; min-width: calc(260px + var(--inn) * 52px); }
+  .bp th, .bp td { padding: 6px 8px; border-bottom: 1px solid var(--line); text-align: center; white-space: nowrap; }
+  .bp thead th { background: var(--plane); color: var(--ink-2); font-weight: 600; font-size: .78rem; }
+  .bp tbody tr:last-child > * { border-bottom: 0; }
+  .bp .nm { text-align: left; font-weight: 600; }
+  .bp .sit { color: var(--muted); }
+  .bp .if { font-weight: 700; }
+  .bp tr.out td { color: var(--muted); }
+
+  .print-only { display: none; }
+  .copied { color: var(--good); }
+
+  /* The account bar. auth.js fills it in, and leaves it empty with no project set up. */
+  #account { display: flex; justify-content: flex-end; margin-bottom: 6px; min-height: 34px; }
+  .acct { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 8px; }
+  .acct-label { font-size: .85rem; color: var(--ink-2); }
+  .acct-user { font-size: .8rem; color: var(--muted); }
+  .acct-note { font-size: .82rem; color: var(--accent); font-weight: 600; }
+  .acct input, .acct select {
+    font: inherit; font-size: .88rem; padding: 6px 9px; border-radius: 8px;
+    border: 1px solid var(--border); background: var(--surface); color: var(--ink);
+  }
+  .acct input { width: 15em; }
+
+  @media print {
+    @page { size: landscape; margin: .35in; }
+    :root {
+      color-scheme: light;
+      --surface: #fff; --plane: #fff; --ink: #000; --ink-2: #222; --muted: #555;
+      --line: #000; --border: #000; --bench: #eee; --set: #fff; --set-edge: #fff;
+    }
+    body { background: #fff; font-size: 11px; }
+    .wrap { max-width: none; padding: 0; }
+    .no-print, .lockcol, .status { display: none !important; }
+    .print-only { display: block; }
+    .panel { border: 0; padding: 0; background: #fff; }
+    .scroll { overflow: visible; border: 1.5px solid #000; border-radius: 0; }
+    table.chart, table.bp { min-width: 0; }
+    table.chart col.lab { width: 92px; }
+    .chart th, .chart td { border-color: #000; }
+    .chart td { height: 30px; }
+    .chart tr td.set { box-shadow: none; }
+    .chart select { display: none; }
+    .print-name { display: block; padding: 0 6px; font-size: 12px; font-weight: 600; white-space: nowrap; overflow: hidden; }
+    .chart .abbr { font-size: 12px; }
+    .chart .full { font-size: 9px; color: #333; }
+    .chart tbody th { position: static; padding: 3px 6px; }
+    .lineup-head { margin-bottom: 6px; }
+    .lineup-head h2 { font-size: 17px; }
+    .batting { margin-top: 10px; }
+    .batting h3 { font-size: 12px; margin: 0 0 4px; }
+    .batting ol { margin: 0; padding-left: 22px; columns: 4; column-gap: 24px; font-size: 12px; }
+    .players-view { break-before: page; margin-top: 0; }
+    .players-view.skip { display: none; }
+    .bp th, .bp td { border-color: #000; padding: 5px 6px; font-size: 12px; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="no-print">
+    <div id="account" class="no-print"></div>
+    <h1>Lineup Card</h1>
+    <p class="lede">Put a player at each position for every inning, then print it. Set any spots you want by hand. Build fills in the rest.</p>
+  </div>
+
+  <div class="top no-print">
+    <section class="panel" aria-labelledby="team-h">
+      <h2 id="team-h">Team</h2>
+      <div class="row" style="margin-bottom:12px">
+        <label class="field" style="flex:1 1 14em">Team name
+          <input type="text" id="team" placeholder="8U Tigers" autocomplete="off">
+        </label>
+        <button id="share" type="button" style="align-self:flex-end">Copy team link</button>
+      </div>
+      <p class="hint">The list is the batting order. Drag a player by the dots to move them. <b>Here</b> means the player is at today's game. Turn off <b>P</b>, <b>C</b> or <b>Bench</b> for a player who should not pitch, catch or sit.</p>
+      <div class="bulk row" id="bulk">
+        <span class="grp"><span>Pitch</span>
+          <button type="button" data-bulk="noP" data-val="false">All</button>
+          <button type="button" data-bulk="noP" data-val="true">None</button></span>
+        <span class="grp"><span>Catch</span>
+          <button type="button" data-bulk="noC" data-val="false">All</button>
+          <button type="button" data-bulk="noC" data-val="true">None</button></span>
+        <span class="grp"><span>Bench</span>
+          <button type="button" data-bulk="noB" data-val="false">All</button>
+          <button type="button" data-bulk="noB" data-val="true">None</button></span>
+      </div>
+      <ol class="roster" id="roster"></ol>
+      <div class="row">
+        <button id="add" type="button">Add player</button>
+      </div>
+      <details class="paste" id="paste">
+        <summary>Paste a list of players</summary>
+        <textarea id="paste-text" placeholder="1. #99 Maverick&#10;2. #27 Colton&#10;3. #1 Severian"></textarea>
+        <div class="row" style="margin-top:8px">
+          <button id="paste-replace" type="button" class="primary">Replace the list</button>
+          <button id="paste-add" type="button">Add to the list</button>
+        </div>
+      </details>
+    </section>
+
+    <section class="panel settings" aria-labelledby="game-h">
+      <h2 id="game-h" style="margin:0">Game</h2>
+      <div class="two">
+        <label class="field">Opponent
+          <input type="text" id="opp" placeholder="Opponent" autocomplete="off">
+        </label>
+        <label class="field">Date
+          <input type="date" id="date">
+        </label>
+      </div>
+      <div class="two">
+        <label class="field">Innings
+          <select class="plain" id="innings"></select>
+        </label>
+        <label class="field">Infield by inning
+          <select class="plain" id="early"></select>
+        </label>
+      </div>
+      <div class="field">Outfielders
+        <div class="seg" role="group" aria-label="Outfielders">
+          <button type="button" data-of="3">3</button>
+          <button type="button" data-of="4">4</button>
+        </div>
+      </div>
+      <label class="check"><input type="checkbox" id="pc">
+        <span>Pitcher and catcher count as infield</span></label>
+      <label class="check"><input type="checkbox" id="print-players">
+        <span>Print the player view on a second page</span></label>
+    </section>
+  </div>
+
+  <section class="panel" aria-labelledby="lineup-h">
+    <div class="lineup-head">
+      <div>
+        <h2 id="lineup-h">Lineup</h2>
+        <div class="sub" id="lineup-sub"></div>
+      </div>
+      <div class="row no-print">
+        <button id="build" type="button" class="primary">Build lineup</button>
+        <button id="check" type="button">Check</button>
+        <button id="undo" type="button" disabled>Undo</button>
+        <button id="clear" type="button">Clear</button>
+        <button id="print" type="button">Print</button>
+      </div>
+    </div>
+    <div id="status" class="status warn" role="status" hidden></div>
+    <div class="scroll" id="chart"></div>
+    <div class="batting print-only" id="batting"></div>
+    <div class="players-view" id="players-view"></div>
+  </section>
+</div>
+
+<script>
+// ---- SOLVER START ----
+const POS = {
+  P:   { name: 'Pitcher',      kind: 'IF' },
+  C:   { name: 'Catcher',      kind: 'IF' },
+  '1B':{ name: '1st Base',     kind: 'IF' },
+  '2B':{ name: '2nd Base',     kind: 'IF' },
+  '3B':{ name: '3rd Base',     kind: 'IF' },
+  SS:  { name: 'Shortstop',    kind: 'IF' },
+  LF:  { name: 'Left Field',   kind: 'OF' },
+  CF:  { name: 'Center Field', kind: 'OF' },
+  LCF: { name: 'Left Center',  kind: 'OF' },
+  RCF: { name: 'Right Center', kind: 'OF' },
+  RF:  { name: 'Right Field',  kind: 'OF' },
+};
+const isBenchKey = k => /^B\d+$/.test(k);
+
+function fieldPositions(outfield) {
+  return ['P', 'C', '1B', '2B', '3B', 'SS', ...(outfield === 3 ? ['LF', 'CF', 'RF'] : ['LF', 'LCF', 'RCF', 'RF'])];
+}
+function slotsFor(outfield, playerCount) {
+  const pos = fieldPositions(outfield);
+  const bench = Math.max(0, playerCount - pos.length);
+  return [...pos, ...Array.from({ length: bench }, (_, i) => 'B' + (i + 1))];
+}
+function countsAsInfield(key, pcInfield) {
+  return POS[key] && POS[key].kind === 'IF' && (pcInfield || (key !== 'P' && key !== 'C'));
+}
+
+// Fills every open spot. Spots in `fixed` stay put.
+// players: [{id, noP, noC}]; fixed: per inning {slotKey: playerId}.
+// Returns assign[inning][slot] = player index, or -1 for an empty spot.
+function solveLineup(o) {
+  const { slots, innings, players } = o;
+  const early = Math.min(o.early, innings);
+  const n = players.length, S = slots.length;
+  const HARD = 1e6, RULE = 1e5, SIT_TWICE = 2e4, SIT_SPREAD = 2e4,
+        SIT_SQ = 500, IF_SQ = 40, REPEAT = 60, OF_ROW = 8;
+
+  const bench = slots.map(isBenchKey);
+  const inf = slots.map(k => !!POS[k] && POS[k].kind === 'IF');
+  const out = slots.map(k => !!POS[k] && POS[k].kind === 'OF');
+  const rule = slots.map(k => countsAsInfield(k, o.pcInfield));
+  const pIdx = slots.indexOf('P'), cIdx = slots.indexOf('C');
+  const noP = players.map(p => !!p.noP), noC = players.map(p => !!p.noC), noB = players.map(p => !!p.noB);
+  const index = new Map(players.map((p, i) => [p.id, i]));
+
+  const A = [], free = [];
+  for (let i = 0; i < innings; i++) {
+    const row = new Array(S).fill(-2), used = new Set(), fx = (o.fixed && o.fixed[i]) || {};
+    slots.forEach((k, s) => {
+      const p = index.get(fx[k]);
+      if (p !== undefined && !used.has(p)) { row[s] = p; used.add(p); }
+    });
+    const open = [];
+    for (let s = 0; s < S; s++) if (row[s] === -2) open.push(s);
+    const pool = [];
+    for (let p = 0; p < n; p++) if (!used.has(p)) pool.push(p);
+    while (pool.length < open.length) pool.push(-1);
+    shuffle(pool);
+    open.forEach((s, j) => { row[s] = pool[j]; });
+    A.push(row); free.push(open);
+  }
+
+  const sat = new Int16Array(n), ifc = new Int16Array(n), gotIF = new Uint8Array(n),
+        lastSat = new Int16Array(n), lastOF = new Int16Array(n), posCnt = new Int16Array(n * S);
+  function cost() {
+    sat.fill(0); ifc.fill(0); gotIF.fill(0); lastSat.fill(-9); lastOF.fill(-9); posCnt.fill(0);
+    let c = 0;
+    for (let i = 0; i < innings; i++) {
+      const row = A[i];
+      for (let s = 0; s < S; s++) {
+        const p = row[s];
+        if (p < 0) { if (!out[s]) c += HARD; continue; }
+        if (bench[s]) {
+          sat[p]++;
+          if (noB[p]) c += HARD;
+          if (lastSat[p] === i - 1) c += SIT_TWICE;
+          lastSat[p] = i;
+          continue;
+        }
+        if ((s === pIdx && noP[p]) || (s === cIdx && noC[p])) c += HARD;
+        if (inf[s]) ifc[p]++;
+        else { if (lastOF[p] === i - 1) c += OF_ROW; lastOF[p] = i; }
+        if (rule[s] && i < early) gotIF[p] = 1;
+        const k = p * S + s;
+        if (++posCnt[k] > 1) c += REPEAT * (posCnt[k] - 1);
+      }
+    }
+    let lo = 1e9, hi = -1;
+    for (let p = 0; p < n; p++) {
+      if (early > 0 && !gotIF[p]) c += RULE;
+      c += sat[p] * sat[p] * SIT_SQ + ifc[p] * ifc[p] * IF_SQ;
+      if (noB[p]) continue; // Even bench time counts only players who can sit.
+      if (sat[p] < lo) lo = sat[p];
+      if (sat[p] > hi) hi = sat[p];
+    }
+    if (n && hi - lo > 1) c += (hi - lo - 1) * SIT_SPREAD;
+    return c;
+  }
+
+  const movable = [];
+  free.forEach((f, i) => { if (f.length >= 2) movable.push(i); });
+  let bestCost = cost(), bestA = A.map(r => r.slice());
+  if (!movable.length) return { assign: bestA, cost: bestCost };
+
+  const iters = o.iterations || 40000, restarts = o.restarts || 3;
+  const start = A.map(r => r.slice());
+  for (let r = 0; r < restarts; r++) {
+    for (let i = 0; i < innings; i++) {
+      const vals = free[i].map(s => start[i][s]);
+      shuffle(vals);
+      free[i].forEach((s, j) => { A[i][s] = vals[j]; });
+    }
+    let cur = cost();
+    const T0 = 3000, T1 = 0.5;
+    for (let it = 0; it < iters; it++) {
+      const T = T0 * Math.pow(T1 / T0, it / iters);
+      const i = movable[(Math.random() * movable.length) | 0], f = free[i];
+      const a = f[(Math.random() * f.length) | 0], b = f[(Math.random() * f.length) | 0];
+      const row = A[i];
+      if (a === b || row[a] === row[b]) continue;
+      let t = row[a]; row[a] = row[b]; row[b] = t;
+      const next = cost(), d = next - cur;
+      if (d <= 0 || Math.random() < Math.exp(-d / T)) {
+        cur = next;
+        if (cur < bestCost) { bestCost = cur; bestA = A.map(x => x.slice()); }
+      } else {
+        t = row[a]; row[a] = row[b]; row[b] = t;
+      }
+    }
+  }
+  return { assign: bestA, cost: bestCost };
+}
+
+function shuffle(a) {
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = (Math.random() * (i + 1)) | 0;
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  return a;
+}
+// ---- SOLVER END ----
+
+const KEY = 'lineup-card-v1';
+const DEFAULTS = {
+  team: '', opponent: '', date: '', innings: 6, early: 4, outfield: 4,
+  pcInfield: true, printPlayers: true, players: [], grid: [],
+};
+let s = load();
+let undoStack = [];
+
+function load() {
+  try {
+    const raw = JSON.parse(localStorage.getItem(KEY));
+    if (raw && typeof raw === 'object') return { ...DEFAULTS, ...raw };
+  } catch (e) {}
+  return structuredClone(DEFAULTS);
+}
+function save() {
+  try { localStorage.setItem(KEY, JSON.stringify(s)); } catch (e) {}
+}
+
+const $ = id => document.getElementById(id);
+const esc = t => String(t).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const uid = () => Math.random().toString(36).slice(2, 10);
+const here = () => s.players.filter(p => p.here !== false);
+const slots = () => slotsFor(s.outfield, here().length);
+const early = () => Math.min(s.early, s.innings);
+const byId = id => s.players.find(p => p.id === id);
+const label = p => (p.num !== '' && p.num != null ? '#' + p.num + ' ' : '') + (p.name || 'Player');
+const shortName = p => p.name || (p.num ? '#' + p.num : 'Player');
+function posName(k) { return isBenchKey(k) ? 'Bench' : POS[k].name; }
+
+// Keep the grid in step with the roster and settings.
+function normalize() {
+  s.innings = Math.max(1, Math.min(9, s.innings | 0));
+  s.early = Math.max(1, Math.min(9, s.early | 0));
+  const ks = slots(), ids = new Set(here().map(p => p.id));
+  const grid = [];
+  for (let i = 0; i < s.innings; i++) {
+    const old = s.grid[i] || {}, row = {}, used = new Set();
+    for (const locked of [true, false]) {
+      for (const k of ks) {
+        const c = old[k];
+        if (!c || !c.pid || !!c.lock !== locked || !ids.has(c.pid) || used.has(c.pid)) continue;
+        row[k] = { pid: c.pid, lock: locked };
+        used.add(c.pid);
+      }
+    }
+    grid.push(row);
+  }
+  s.grid = grid;
+}
+
+function pushUndo() {
+  undoStack.push(JSON.stringify(s.grid));
+  if (undoStack.length > 30) undoStack.shift();
+}
+
+// ---- Roster ----
+function parseLine(line) {
+  let t = line.trim();
+  if (!t) return null;
+  t = t.replace(/^\d+[.)]\s+/, '');
+  let m = t.match(/^#\s*(\d{1,3})\s+(.+)$/) || t.match(/^(\d{1,3})\s+(.+)$/);
+  if (m) return { num: m[1], name: clean(m[2]) };
+  m = t.match(/^(.+?)\s+#\s*(\d{1,3})$/);
+  if (m) return { num: m[2], name: clean(m[1]) };
+  m = t.match(/^#\s*(\d{1,3})$/);
+  if (m) return { num: m[1], name: '' };
+  return { num: '', name: clean(t) };
+}
+const clean = t => t.replace(/[|~]/g, '').trim();
+const newPlayer = (num = '', name = '') => ({ id: uid(), num, name, here: true, noP: false, noC: false, noB: false });
+
+const GRIP = '<svg width="10" height="16" viewBox="0 0 10 16" aria-hidden="true" fill="currentColor"><circle cx="2" cy="2" r="1.5"/><circle cx="8" cy="2" r="1.5"/><circle cx="2" cy="8" r="1.5"/><circle cx="8" cy="8" r="1.5"/><circle cx="2" cy="14" r="1.5"/><circle cx="8" cy="14" r="1.5"/></svg>';
+
+function renderRoster() {
+  const list = $('roster');
+  $('bulk').hidden = !s.players.length;
+  document.querySelectorAll('[data-bulk]').forEach(b => {
+    b.disabled = s.players.every(p => !!p[b.dataset.bulk] === (b.dataset.val === 'true'));
+  });
+  if (!s.players.length) {
+    list.innerHTML = '<li class="hint" style="margin:0">No players yet. Add them one at a time, or paste a list below.</li>';
+    return;
+  }
+  list.innerHTML = s.players.map((p, i) => `
+    <li class="player${p.here === false ? ' out' : ''}" data-id="${p.id}">
+      <button type="button" class="grip" aria-label="Move ${esc(label(p))}. Drag, or press the up and down arrow keys.">${GRIP}</button>
+      <span class="bat">${i + 1}</span>
+      <input type="text" class="num" data-f="num" value="${esc(p.num)}" placeholder="#" inputmode="numeric" aria-label="Jersey number">
+      <input type="text" class="name" data-f="name" value="${esc(p.name)}" placeholder="Name" aria-label="Name">
+      <span class="tail">
+        <label class="chip" title="At today's game"><input type="checkbox" data-f="here" ${p.here !== false ? 'checked' : ''}><span>Here</span></label>
+        <label class="chip" title="Can pitch"><input type="checkbox" data-f="canP" ${!p.noP ? 'checked' : ''}><span>P</span></label>
+        <label class="chip" title="Can catch"><input type="checkbox" data-f="canC" ${!p.noC ? 'checked' : ''}><span>C</span></label>
+        <label class="chip" title="Can sit on the bench"><input type="checkbox" data-f="canB" ${!p.noB ? 'checked' : ''}><span>Bench</span></label>
+        <button type="button" class="icon" data-act="remove" aria-label="Remove player">&times;</button>
+      </span>
+    </li>`).join('');
+}
+
+$('roster').addEventListener('input', e => {
+  const li = e.target.closest('.player'), f = e.target.dataset.f;
+  if (!li || (f !== 'num' && f !== 'name')) return;
+  const p = byId(li.dataset.id);
+  p[f] = f === 'num' ? e.target.value.replace(/\D/g, '').slice(0, 3) : clean(e.target.value);
+  if (f === 'num' && e.target.value !== p.num) e.target.value = p.num;
+  save(); renderLineup();
+});
+$('roster').addEventListener('change', e => {
+  const li = e.target.closest('.player'), f = e.target.dataset.f;
+  if (!li || e.target.type !== 'checkbox') return;
+  const p = byId(li.dataset.id);
+  if (f === 'here') p.here = e.target.checked;
+  if (f === 'canP') p.noP = !e.target.checked;
+  if (f === 'canC') p.noC = !e.target.checked;
+  if (f === 'canB') p.noB = !e.target.checked;
+  changed(true);
+});
+$('roster').addEventListener('click', e => {
+  const btn = e.target.closest('button[data-act="remove"]');
+  if (!btn) return;
+  const i = s.players.findIndex(p => p.id === btn.closest('.player').dataset.id);
+  s.players.splice(i, 1);
+  changed(true);
+});
+$('bulk').addEventListener('click', e => {
+  const b = e.target.closest('button[data-bulk]');
+  if (!b) return;
+  s.players.forEach(p => { p[b.dataset.bulk] = b.dataset.val === 'true'; });
+  changed(true);
+});
+
+// ---- Drag to reorder ----
+// Pointer events, so a mouse and a finger both work. Rows slide out of the way
+// while you drag, and the page scrolls when you hold near the top or bottom.
+let drag = null;
+$('roster').addEventListener('pointerdown', e => {
+  const grip = e.target.closest('.grip');
+  if (!grip || e.button !== 0 || drag) return;
+  e.preventDefault();
+  const items = [...$('roster').children], li = grip.closest('.player');
+  const rects = items.map(el => {
+    const r = el.getBoundingClientRect();
+    return { top: r.top + scrollY, h: r.height };
+  });
+  const from = items.indexOf(li);
+  const gap = items.length > 1 ? rects[1].top - rects[0].top - rects[0].h : 0;
+  drag = { li, items, rects, from, to: from, step: rects[from].h + gap, startY: e.clientY + scrollY, y: e.clientY, id: e.pointerId };
+  grip.setPointerCapture(e.pointerId);
+  $('roster').classList.add('sorting');
+  li.classList.add('dragging');
+  drag.raf = requestAnimationFrame(dragTick);
+});
+$('roster').addEventListener('pointermove', e => {
+  if (!drag || e.pointerId !== drag.id) return;
+  drag.y = e.clientY;
+  dragLayout();
+});
+$('roster').addEventListener('pointerup', dragEnd);
+$('roster').addEventListener('pointercancel', dragEnd);
+
+// Scrolls the page while the finger holds near an edge.
+function dragTick() {
+  if (!drag) return;
+  const edge = 60;
+  let step = 0;
+  if (drag.y < edge) step = -Math.ceil((edge - drag.y) / 5);
+  else if (drag.y > innerHeight - edge) step = Math.ceil((drag.y - innerHeight + edge) / 5);
+  if (step) { scrollBy(0, step); dragLayout(); }
+  drag.raf = requestAnimationFrame(dragTick);
+}
+function dragLayout() {
+  const d = drag, r = d.rects[d.from], last = d.rects[d.rects.length - 1];
+  const dy = Math.max(d.rects[0].top - r.top, Math.min(last.top + last.h - r.top - r.h, d.y + scrollY - d.startY));
+  d.li.style.transform = `translateY(${dy}px)`;
+  const center = r.top + r.h / 2 + dy;
+  d.to = d.rects.filter((q, j) => j !== d.from && q.top + q.h / 2 < center).length;
+  d.items.forEach((el, j) => {
+    if (j === d.from) return;
+    const shift = j > d.from && j <= d.to ? -d.step : j < d.from && j >= d.to ? d.step : 0;
+    el.style.transform = shift ? `translateY(${shift}px)` : '';
+  });
+}
+function dragEnd(e) {
+  if (!drag || e.pointerId !== drag.id) return;
+  cancelAnimationFrame(drag.raf);
+  if (e.type === 'pointerup') { drag.y = e.clientY; dragLayout(); }
+  else drag.to = drag.from;
+  const { from, to, li, items } = drag;
+  drag = null;
+  items.forEach(el => { el.style.transform = ''; });
+  $('roster').classList.remove('sorting');
+  li.classList.remove('dragging');
+  if (to === from) return;
+  const [p] = s.players.splice(from, 1);
+  s.players.splice(to, 0, p);
+  changed(true);
+}
+$('roster').addEventListener('keydown', e => {
+  const grip = e.target.closest('.grip');
+  if (!grip || (e.key !== 'ArrowUp' && e.key !== 'ArrowDown')) return;
+  e.preventDefault();
+  const id = grip.closest('.player').dataset.id;
+  const i = s.players.findIndex(p => p.id === id), j = i + (e.key === 'ArrowUp' ? -1 : 1);
+  if (j < 0 || j >= s.players.length) return;
+  [s.players[i], s.players[j]] = [s.players[j], s.players[i]];
+  changed(true);
+  document.querySelector(`.player[data-id="${id}"] .grip`).focus();
+});
+$('add').addEventListener('click', () => {
+  const p = newPlayer();
+  s.players.push(p);
+  changed(true);
+  document.querySelector(`.player[data-id="${p.id}"] .num`).focus();
+});
+function pasteList(replace) {
+  const got = $('paste-text').value.split(/\r?\n/).map(parseLine).filter(Boolean).map(x => newPlayer(x.num, x.name));
+  if (!got.length) return;
+  if (replace) { s.players = got; s.grid = []; undoStack = []; }
+  else s.players.push(...got);
+  $('paste-text').value = '';
+  $('paste').open = false;
+  changed(true);
+}
+$('paste-replace').addEventListener('click', () => pasteList(true));
+$('paste-add').addEventListener('click', () => pasteList(false));
+
+// ---- Team link ----
+function teamLink() {
+  const q = new URLSearchParams();
+  if (s.team) q.set('team', s.team);
+  q.set('players', s.players.map(p => `${p.num} ${p.name}`.trim() + (p.noP ? '~noP' : '') + (p.noC ? '~noC' : '') + (p.noB ? '~noB' : '')).join('|'));
+  q.set('of', s.outfield);
+  q.set('inn', s.innings);
+  return location.origin + location.pathname + '#' + q.toString();
+}
+function readLink() {
+  if (location.hash.length < 2) return null;
+  const q = new URLSearchParams(location.hash.slice(1));
+  if (!q.has('players')) return null;
+  const players = q.get('players').split('|').map(e => {
+    const [main, ...flags] = e.split('~');
+    const x = parseLine(main);
+    if (!x) return null;
+    const p = newPlayer(x.num, x.name);
+    p.noP = flags.includes('noP');
+    p.noC = flags.includes('noC');
+    p.noB = flags.includes('noB');
+    return p;
+  }).filter(Boolean);
+  return { team: q.get('team') || '', players, outfield: q.get('of') === '3' ? 3 : 4, innings: +q.get('inn') || null };
+}
+function applyLink() {
+  const link = readLink();
+  if (!link) return;
+  history.replaceState(null, '', location.pathname + location.search);
+  const same = s.team === link.team && s.players.length === link.players.length &&
+    s.players.every((p, i) => p.name === link.players[i].name && p.num === link.players[i].num);
+  if (same) return;
+  s.team = link.team;
+  s.players = link.players;
+  s.outfield = link.outfield;
+  if (link.innings) s.innings = link.innings;
+  s.grid = [];
+}
+$('share').addEventListener('click', async () => {
+  const url = teamLink(), btn = $('share');
+  try {
+    await navigator.clipboard.writeText(url);
+    btn.textContent = 'Link copied';
+  } catch (e) {
+    $('paste').open = true;
+    $('paste-text').value = url;
+    btn.textContent = 'Copy the link from the box below';
+  }
+  btn.classList.add('copied');
+  setTimeout(() => { btn.textContent = 'Copy team link'; btn.classList.remove('copied'); }, 2500);
+});
+
+// ---- Game settings ----
+function renderSettings() {
+  $('team').value = s.team;
+  $('opp').value = s.opponent;
+  $('date').value = s.date;
+  $('innings').innerHTML = [3, 4, 5, 6, 7, 8, 9].map(n => `<option value="${n}" ${n === s.innings ? 'selected' : ''}>${n}</option>`).join('');
+  $('early').innerHTML = Array.from({ length: s.innings }, (_, i) => i + 1)
+    .map(n => `<option value="${n}" ${n === early() ? 'selected' : ''}>${n === 1 ? 'Inning 1' : 'Innings 1–' + n}</option>`).join('');
+  document.querySelectorAll('[data-of]').forEach(b => b.setAttribute('aria-pressed', +b.dataset.of === s.outfield));
+  $('pc').checked = s.pcInfield;
+  $('print-players').checked = s.printPlayers;
+}
+$('team').addEventListener('input', e => { s.team = e.target.value; save(); renderHead(); });
+$('opp').addEventListener('input', e => { s.opponent = e.target.value; save(); renderHead(); });
+$('date').addEventListener('input', e => { s.date = e.target.value; save(); renderHead(); });
+$('innings').addEventListener('change', e => { s.innings = +e.target.value; changed(); });
+$('early').addEventListener('change', e => { s.early = +e.target.value; changed(); });
+document.querySelectorAll('[data-of]').forEach(b => b.addEventListener('click', () => { s.outfield = +b.dataset.of; changed(); }));
+$('pc').addEventListener('change', e => { s.pcInfield = e.target.checked; changed(); });
+$('print-players').addEventListener('change', e => { s.printPlayers = e.target.checked; changed(); });
+
+// ---- Lineup ----
+function renderHead() {
+  $('lineup-h').textContent = s.team ? s.team + ' Lineup' : 'Lineup';
+  const bits = [];
+  if (s.opponent) bits.push('vs. ' + s.opponent);
+  if (s.date) {
+    const d = new Date(s.date + 'T12:00:00');
+    if (!isNaN(d)) bits.push(d.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' }));
+  }
+  $('lineup-sub').textContent = bits.join(' · ');
+}
+
+function renderLineup() {
+  renderHead();
+  const ks = slots(), players = here(), inn = s.innings;
+  document.documentElement.style.setProperty('--inn', inn);
+
+  if (!players.length) {
+    $('chart').innerHTML = '';
+    $('players-view').innerHTML = '';
+    $('batting').innerHTML = '';
+    setStatus('');
+    $('build').disabled = $('check').disabled = true;
+    $('undo').disabled = !undoStack.length;
+    return;
+  }
+  $('build').disabled = $('check').disabled = false;
+  $('undo').disabled = !undoStack.length;
+
+  const where = whereMap();
+
+  let h = `<table class="chart"><colgroup><col class="lab">${'<col>'.repeat(inn)}</colgroup><thead><tr><th class="corner">Position</th>`;
+  for (let i = 0; i < inn; i++) {
+    const filled = Object.values(s.grid[i]);
+    const allSet = filled.length > 0 && filled.every(c => c.lock);
+    h += `<th><div class="inn">${i + 1}</div><button type="button" class="lockcol" data-inn="${i}" aria-pressed="${allSet}"
+      title="${allSet ? 'Let Build change this inning' : 'Keep this inning when you build'}">${allSet ? 'Kept' : 'Keep'}</button></th>`;
+  }
+  h += '</tr></thead><tbody>';
+  let benchSeen = false;
+  for (const k of ks) {
+    const isB = isBenchKey(k);
+    const cls = isB ? 'bench' + (benchSeen ? '' : ' bench-first') : '';
+    if (isB) benchSeen = true;
+    h += `<tr class="${cls}"><th scope="row"><span class="abbr">${isB ? 'Bench' : k}</span>${isB ? '' : `<span class="full">${POS[k].name}</span>`}</th>`;
+    for (let i = 0; i < inn; i++) {
+      const c = s.grid[i][k];
+      const p = c && byId(c.pid);
+      const opts = players.map(q => {
+        const at = where[i][q.id];
+        const note = at && at !== k ? ` (${isBenchKey(at) ? 'bench' : at})` : '';
+        return `<option value="${q.id}" ${p && p.id === q.id ? 'selected' : ''}>${esc(label(q) + note)}</option>`;
+      }).join('');
+      h += `<td class="${c && c.lock ? 'set' : ''}"><select data-inn="${i}" data-slot="${k}" class="${p ? '' : 'empty'}"
+        aria-label="Inning ${i + 1}, ${posName(k)}"><option value="">—</option>${opts}</select>
+        <span class="print-name">${p ? esc(label(p)) : '&nbsp;'}</span></td>`;
+    }
+    h += '</tr>';
+  }
+  h += '</tbody></table>';
+  $('chart').innerHTML = h;
+
+  $('batting').innerHTML = `<h3>Batting order</h3><ol>${players.map(p => `<li>${esc(label(p))}</li>`).join('')}</ol>`;
+
+  renderPlayersView(ks, where);
+  // Any edit makes an open check out of date, so hide it until Check runs again.
+  setStatus('');
+}
+
+// Per inning: player id -> the slot they are in.
+function whereMap() {
+  return s.grid.map(row => {
+    const m = {};
+    for (const k in row) m[row[k].pid] = k;
+    return m;
+  });
+}
+
+function renderPlayersView(ks, where) {
+  const inn = s.innings;
+  let h = `<h3>By player</h3><div class="scroll"><table class="bp"><thead><tr><th class="nm">Player</th>`;
+  for (let i = 0; i < inn; i++) h += `<th>${i + 1}</th>`;
+  h += `<th>Infield</th><th>Outfield</th><th>Bench</th></tr></thead><tbody>`;
+  for (const p of s.players) {
+    if (p.here === false) {
+      h += `<tr class="out"><td class="nm">${esc(label(p))}</td><td colspan="${inn + 3}">Not here today</td></tr>`;
+      continue;
+    }
+    let ifc = 0, ofc = 0, sat = 0;
+    let cells = '';
+    for (let i = 0; i < inn; i++) {
+      const k = where[i][p.id];
+      if (!k) { cells += '<td class="sit">·</td>'; continue; }
+      if (isBenchKey(k)) { sat++; cells += '<td class="sit">Bench</td>'; continue; }
+      const isIF = POS[k].kind === 'IF';
+      if (isIF) ifc++; else ofc++;
+      cells += `<td class="${isIF ? 'if' : ''}">${k}</td>`;
+    }
+    h += `<tr><td class="nm">${esc(label(p))}</td>${cells}<td>${ifc}</td><td>${ofc}</td><td>${sat}</td></tr>`;
+  }
+  h += '</tbody></table></div>';
+  const pv = $('players-view');
+  pv.innerHTML = h;
+  pv.classList.toggle('skip', !s.printPlayers);
+}
+
+// Returns a list of problems. An empty list means the lineup follows every rule.
+function checkLineup() {
+  const ks = slots(), where = whereMap(), players = here(), inn = s.innings, e = early();
+  const placed = s.grid.reduce((n, row) => n + Object.keys(row).length, 0);
+  if (!placed) return ['The lineup is empty.'];
+  const notes = [];
+  const fieldCount = fieldPositions(s.outfield).length;
+  s.players.forEach((p, i) => {
+    if (p.here !== false && !p.name && !p.num) notes.push(`Player ${i + 1} on the team list has no name or number.`);
+  });
+  // One note covers the open outfield spots a short roster leaves, instead of one per inning.
+  if (players.length < fieldCount) {
+    const open = fieldCount - players.length;
+    notes.push(`Only ${players.length} players are here for ${fieldCount} positions, so ${open === 1 ? 'an outfield spot stays' : open + ' outfield spots stay'} empty each inning.` +
+      (s.outfield === 4 && players.length >= 9 ? ' Switch to 3 outfielders to fill every spot.' : ''));
+  }
+  for (let i = 0; i < inn; i++) {
+    const row = s.grid[i];
+    if (!Object.keys(row).length) { notes.push(`Inning ${i + 1} is empty.`); continue; }
+    for (const k of ks) {
+      if (row[k] || isBenchKey(k)) continue;
+      if (POS[k].kind === 'IF' || players.length >= fieldCount) notes.push(`Inning ${i + 1} has no ${POS[k].name.toLowerCase()}.`);
+    }
+    const missing = players.filter(p => !where[i][p.id]);
+    if (missing.length) notes.push(`Inning ${i + 1} leaves out ${list(missing.map(shortName))}.`);
+    for (const p of players) {
+      const k = where[i][p.id];
+      if (k === 'P' && p.noP) notes.push(`${shortName(p)} pitches in inning ${i + 1}, but P is off for ${shortName(p)}.`);
+      if (k === 'C' && p.noC) notes.push(`${shortName(p)} catches in inning ${i + 1}, but C is off for ${shortName(p)}.`);
+      if (k && isBenchKey(k) && p.noB) notes.push(`${shortName(p)} sits in inning ${i + 1}, but Bench is off for ${shortName(p)}.`);
+    }
+  }
+  const noIF = [], twice = [], sat = {};
+  for (const p of players) {
+    let got = false, last = -9;
+    sat[p.id] = 0;
+    for (let i = 0; i < inn; i++) {
+      const k = where[i][p.id];
+      if (!k) continue;
+      if (isBenchKey(k)) {
+        sat[p.id]++;
+        if (last === i - 1) twice.push(`${shortName(p)} sits innings ${i} and ${i + 1}.`);
+        last = i;
+      } else if (i < e && countsAsInfield(k, s.pcInfield)) got = true;
+    }
+    if (!got) noIF.push(shortName(p));
+  }
+  const range = e === 1 ? 'inning 1' : `innings 1–${e}`;
+  if (noIF.length) notes.push(`${list(noIF)} ${noIF.length === 1 ? 'has' : 'have'} no infield inning in ${range}.`);
+  if (players.length * e > e * (s.pcInfield ? 6 : 4) && noIF.length)
+    notes.push(`There are more players than infield spots in ${range}. Try a later inning for the infield rule.`);
+  notes.push(...twice);
+  const counts = players.filter(p => !p.noB).map(p => sat[p.id]);
+  if (counts.length && Math.max(...counts) - Math.min(...counts) > 1) notes.push('Bench time is not even.');
+
+  return notes;
+}
+function list(names) {
+  if (names.length < 2) return names.join('');
+  return names.slice(0, -1).join(', ') + ' and ' + names[names.length - 1];
+}
+// The bar shows only after Check.
+function setStatus(html, kind = 'warn') {
+  const el = $('status');
+  el.className = 'status ' + kind;
+  el.innerHTML = html;
+  el.hidden = !html;
+}
+$('check').addEventListener('click', () => {
+  if (!s.grid.some(row => Object.keys(row).length)) return setStatus('The lineup is empty.');
+  const notes = checkLineup();
+  if (!notes.length) return setStatus('No problems found.', 'good');
+  const title = notes.length === 1 ? '1 problem:' : `${notes.length} problems:`;
+  setStatus(`${title}<ul>${notes.map(n => `<li>${esc(n)}</li>`).join('')}</ul>`);
+});
+
+$('chart').addEventListener('change', e => {
+  const sel = e.target.closest('select[data-slot]');
+  if (!sel) return;
+  const i = +sel.dataset.inn, k = sel.dataset.slot, pid = sel.value;
+  pushUndo();
+  const row = s.grid[i], cur = row[k];
+  if (!pid) {
+    delete row[k];
+  } else {
+    const other = Object.keys(row).find(x => x !== k && row[x].pid === pid);
+    if (other) {
+      if (cur) row[other] = { pid: cur.pid, lock: row[other].lock };
+      else delete row[other];
+    }
+    row[k] = { pid, lock: true };
+  }
+  changed();
+});
+$('chart').addEventListener('click', e => {
+  const btn = e.target.closest('.lockcol');
+  if (!btn) return;
+  const row = s.grid[+btn.dataset.inn], cells = Object.values(row);
+  if (!cells.length) return;
+  pushUndo();
+  const lock = !cells.every(c => c.lock);
+  cells.forEach(c => { c.lock = lock; });
+  changed();
+});
+
+$('build').addEventListener('click', () => {
+  const ks = slots(), players = here();
+  if (!players.length) return;
+  pushUndo();
+  const fixed = s.grid.map(row => {
+    const f = {};
+    for (const k in row) if (row[k].lock) f[k] = row[k].pid;
+    return f;
+  });
+  const r = solveLineup({ slots: ks, innings: s.innings, early: early(), pcInfield: s.pcInfield, players, fixed });
+  s.grid = r.assign.map((row, i) => {
+    const o = {};
+    row.forEach((p, j) => {
+      if (p >= 0) o[ks[j]] = { pid: players[p].id, lock: fixed[i][ks[j]] === players[p].id };
+    });
+    return o;
+  });
+  changed();
+});
+$('undo').addEventListener('click', () => {
+  if (!undoStack.length) return;
+  s.grid = JSON.parse(undoStack.pop());
+  changed();
+});
+$('clear').addEventListener('click', () => {
+  pushUndo();
+  s.grid = [];
+  changed();
+});
+$('print').addEventListener('click', () => window.print());
+
+function changed(roster) {
+  normalize();
+  save();
+  if (roster) renderRoster();
+  renderSettings();
+  renderLineup();
+}
+
+applyLink();
+normalize();
+save();
+renderRoster();
+renderSettings();
+renderLineup();
+if (!s.players.length) $('paste').open = true;
+</script>
+<script src="supabase-config.js"></script>
+<script src="auth.js"></script>
+</body>
+</html>
