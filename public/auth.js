@@ -303,9 +303,12 @@
     const set = row.settings || {}, game = row.lineup || {};
     s.team = row.name || '';
     s.players = Array.isArray(row.players) ? row.players : [];
-    ['innings', 'early', 'outfield'].forEach(k => { if (typeof set[k] === 'number') s[k] = set[k]; });
+    ['innings', 'early', 'outfield', 'minPlay'].forEach(k => { if (typeof set[k] === 'number') s[k] = set[k]; });
     if (typeof set.pcInfield === 'boolean') s.pcInfield = set.pcInfield;
     if (typeof set.printPlayers === 'boolean') s.printPlayers = set.printPlayers;
+    if (Array.isArray(set.positions) && set.positions.length) s.positions = set.positions;
+    s.posCaps = set.posCaps && typeof set.posCaps === 'object' ? set.posCaps : {};
+    s.season = Array.isArray(set.season) ? set.season : [];
     s.grid = Array.isArray(game.grid) ? game.grid : [];
     s.opponent = game.opponent || '';
     s.date = game.date || '';
@@ -317,7 +320,11 @@
     return {
       name: s.team || 'My team',
       players: s.players,
-      settings: { innings: s.innings, early: s.early, outfield: s.outfield, pcInfield: s.pcInfield, printPlayers: s.printPlayers },
+      settings: {
+        innings: s.innings, early: s.early, outfield: s.outfield, minPlay: s.minPlay,
+        pcInfield: s.pcInfield, printPlayers: s.printPlayers,
+        positions: s.positions, posCaps: s.posCaps, season: s.season,
+      },
       lineup: { grid: s.grid, opponent: s.opponent, date: s.date },
       updated_at: new Date().toISOString(),
     };

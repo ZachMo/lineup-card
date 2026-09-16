@@ -195,6 +195,9 @@
   }
   .lockcol[aria-pressed=true] { background: var(--set); border-color: var(--set-edge); color: var(--ink); }
 
+  .season-games { display: grid; gap: 4px; margin-top: 10px; font-size: .85rem; color: var(--ink-2); }
+  .season-games .g { display: flex; align-items: center; gap: 10px; }
+  .season-games .g span { flex: 1 1 auto; }
   .players-view { margin-top: 18px; }
   .players-view h3 { font-size: .95rem; margin: 0 0 8px; }
   table.bp { font-size: .85rem; min-width: calc(260px + var(--inn) * 52px); }
@@ -450,6 +453,7 @@
           <div class="sheet">
             <button id="check" type="button">Check the rules</button>
             <button id="undo" type="button" disabled>Undo</button>
+            <button id="save-game" type="button">Save game to season</button>
             <button id="clear" type="button">Clear the lineup</button>
           </div>
         </details>
@@ -460,6 +464,10 @@
     <div class="scroll" id="chart"></div>
     <div class="batting print-only" id="batting"></div>
     <div class="players-view" id="players-view"></div>
+    <details class="fold no-print" id="season-fold" hidden>
+      <summary>Season<span class="fold-sum" id="season-sum"></span></summary>
+      <div class="body" id="season-body"></div>
+    </details>
   </section>
 </div>
 
@@ -667,6 +675,7 @@ const KEY = 'lineup-card-v1';
 const DEFAULTS = {
   team: '', opponent: '', date: '', innings: 6, early: 4, outfield: 4,
   positions: [], posCaps: {}, minPlay: 0, pcInfield: true, printPlayers: true, players: [], grid: [],
+  season: [],
 };
 let s = load();
 let undoStack = [];
@@ -738,6 +747,8 @@ function normalize() {
   }
   s.posCaps = caps;
   for (const p of s.players) delete p.caps; // from an earlier build
+  if (!Array.isArray(s.season)) s.season = [];
+  if (s.season.length > 60) s.season.length = 60; // a season, not a career
   for (const p of s.players) {
     p.from = Math.max(1, Math.min(s.innings, p.from || 1));
     p.to = p.to ? Math.max(p.from, Math.min(s.innings, p.to)) : 0;
@@ -1281,6 +1292,91 @@ function renderInningView(ks, players, where) {
   $('inning-view').innerHTML = h + '</div>';
 }
 
+// ---- Season ----
+// A card is one game. Saving it keeps what each player actually did, so the
+// season can answer the questions a league asks at the end of it.
+function gameStats() {
+  const where = whereMap(), stats = {};
+  for (const p of here()) {
+    const rec = { field: 0, inf: 0, bench: 0, pos: {} };
+    for (let i = 0; i < s.innings; i++) {
+      const k = where[i][p.id];
+      if (!k) continue;
+      if (isBenchKey(k)) { rec.bench++; continue; }
+      rec.field++;
+      if (posInfo(k).kind === 'IF') rec.inf++;
+      rec.pos[k] = (rec.pos[k] || 0) + 1;
+    }
+    stats[p.id] = rec;
+  }
+  return stats;
+}
+
+function saveGame() {
+  if (!s.grid.some(row => Object.keys(row).length)) return setStatus('Build a lineup first.');
+  s.season.unshift({
+    id: uid(),
+    date: s.date || new Date().toISOString().slice(0, 10),
+    opponent: s.opponent || '',
+    innings: s.innings,
+    // Names are kept with the game, so the season still reads if a player
+    // leaves the roster or changes number.
+    names: Object.fromEntries(here().map(p => [p.id, label(p)])),
+    stats: gameStats(),
+  });
+  changed();
+  $('season-fold').open = true;
+  setStatus('Game saved to the season.', 'good');
+}
+
+function seasonTotals() {
+  const totals = new Map();
+  for (const g of s.season) {
+    for (const [pid, rec] of Object.entries(g.stats || {})) {
+      const t = totals.get(pid) || { name: 'Player', games: 0, field: 0, inf: 0, bench: 0, pos: {} };
+      t.name = (g.names || {})[pid] || t.name;
+      t.games++;
+      t.field += rec.field || 0;
+      t.inf += rec.inf || 0;
+      t.bench += rec.bench || 0;
+      for (const [k, n] of Object.entries(rec.pos || {})) t.pos[k] = (t.pos[k] || 0) + n;
+      totals.set(pid, t);
+    }
+  }
+  return totals;
+}
+
+function renderSeason() {
+  const fold = $('season-fold');
+  fold.hidden = !s.season.length;
+  if (!s.season.length) return;
+  const totals = seasonTotals();
+  const mine = s.players.map(p => p.id).filter(id => totals.has(id));
+  const gone = [...totals.keys()].filter(id => !mine.includes(id));
+  const order = [...mine, ...gone];
+  const cols = fieldPositions().filter(k => k === 'P' || k === 'C');
+  $('season-sum').textContent = `${s.season.length} ${s.season.length === 1 ? 'game' : 'games'}`;
+  let h = `<div class="scroll"><table class="bp"><thead><tr><th class="nm">Player</th><th>Games</th><th>Played</th><th>Infield</th><th>Bench</th>`;
+  h += cols.map(k => `<th>${esc(k)}</th>`).join('') + '</tr></thead><tbody>';
+  for (const id of order) {
+    const t = totals.get(id);
+    h += `<tr><td class="nm">${esc(t.name)}</td><td>${t.games}</td><td class="if">${t.field}</td><td>${t.inf}</td><td class="sit">${t.bench}</td>`;
+    h += cols.map(k => `<td>${t.pos[k] || 0}</td>`).join('') + '</tr>';
+  }
+  h += '</tbody></table></div>';
+  h += `<div class="season-games">${s.season.map(g => `
+    <div class="g"><span>${esc(g.date)}${g.opponent ? ' &middot; vs. ' + esc(g.opponent) : ''} &middot; ${g.innings} innings</span>
+    <button type="button" class="icon" data-game="${g.id}" aria-label="Remove this game">&times;</button></div>`).join('')}</div>`;
+  $('season-body').innerHTML = h;
+}
+$('save-game').addEventListener('click', saveGame);
+$('season-body').addEventListener('click', e => {
+  const btn = e.target.closest('[data-game]');
+  if (!btn) return;
+  s.season = s.season.filter(g => g.id !== btn.dataset.game);
+  changed();
+});
+
 // Per inning: player id -> the slot they are in.
 function whereMap() {
   return s.grid.map(row => {
@@ -1580,6 +1676,7 @@ function changed(roster) {
   if (roster) renderRoster();
   renderSettings();
   renderLineup();
+  renderSeason();
 }
 
 applyLink();
@@ -1588,6 +1685,7 @@ save();
 renderRoster();
 renderSettings();
 renderLineup();
+renderSeason();
 if (!s.players.length) $('paste').open = true;
 </script>
 <script src="supabase-config.js"></script>
