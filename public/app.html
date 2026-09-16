@@ -461,6 +461,8 @@
           <p class="hint" style="margin:0">Weekly innings and rest days count the games you have saved to the season.</p>
         </div>
       </details>
+      <label class="check" id="fair-wrap" hidden><input type="checkbox" id="fair-season">
+        <span>Even out playing time across the season</span></label>
       <label class="check"><input type="checkbox" id="pc">
         <span>Pitcher and catcher count as infield</span></label>
       <label class="check"><input type="checkbox" id="print-players">
@@ -533,6 +535,9 @@ function solveLineup(o) {
         SIT_SQ = 500, IF_SQ = 40, REPEAT = 60, OF_ROW = 8,
         // Leagues that set a floor on playing time mean it, so this sits high.
         MIN_PLAY = 5e4, EMPTY_IF = 3e4, OVER_CAP = 4e4,
+        // A thumb on the scale for whoever has played least this season. Small
+        // on purpose: it decides ties, never a rule.
+        FAIR = 25,
         // A coach's wishes, weighed under every fairness rule above them.
         AVOID = 900, PREFER = 150;
   const minPlay = Math.min(o.minPlay || 0, innings);
@@ -615,6 +620,7 @@ function solveLineup(o) {
         if (shuns[p].has(s)) c += AVOID;
         else if (wants[p].has(s)) c -= PREFER;
         fld[p]++;
+        if (o.fairCredit) c -= FAIR * o.fairCredit[p];
         if (inf[s]) ifc[p]++;
         else { if (lastOF[p] === i - 1) c += OF_ROW; lastOF[p] = i; }
         if (rule[s] && i < early) gotIF[p] = 1;
@@ -745,7 +751,7 @@ const KEY = 'lineup-card-v1';
 const DEFAULTS = {
   team: '', opponent: '', date: '', innings: 6, early: 4, outfield: 4,
   positions: [], posCaps: {}, minPlay: 0, pcInfield: true, printPlayers: true, players: [], grid: [],
-  season: [],
+  season: [], fairSeason: false,
   // All off until a coach turns them on.
   pitch: { maxWeek: 0, restInnings: 0, restDays: 0, catchBlocks: 0, counts: false, bracket: '' },
 };
@@ -819,6 +825,7 @@ function normalize() {
   }
   s.posCaps = caps;
   for (const p of s.players) delete p.caps; // from an earlier build
+  s.fairSeason = !!s.fairSeason;
   if (!Array.isArray(s.season)) s.season = [];
   if (s.season.length > 60) s.season.length = 60; // a season, not a career
   const pr = s.pitch && typeof s.pitch === 'object' ? s.pitch : {};
@@ -1191,6 +1198,9 @@ function renderSettings() {
   renderPositions();
   renderPosCaps();
   renderPitchRules();
+  // Nothing to even out until there are games to count.
+  $('fair-wrap').hidden = !s.season.length;
+  $('fair-season').checked = s.fairSeason;
   $('pc').checked = s.pcInfield;
   $('print-players').checked = s.printPlayers;
   // The folded panel still says what it holds.
@@ -1372,6 +1382,7 @@ document.querySelectorAll('[data-preset]').forEach(b => b.addEventListener('clic
   s.outfield = b.dataset.preset === 'three' ? 3 : 4;
   changed();
 }));
+$('fair-season').addEventListener('change', e => { s.fairSeason = e.target.checked; changed(); });
 $('pc').addEventListener('change', e => { s.pcInfield = e.target.checked; changed(); });
 $('print-players').addEventListener('change', e => { s.printPlayers = e.target.checked; changed(); });
 
@@ -1504,23 +1515,56 @@ function saveGame() {
     .map(p => ({ p, inn: where.filter(w => w[p.id] === 'P').length }))
     .filter(x => x.inn > 0);
   if (s.pitch.counts && s.pitch.bracket && pitchers.length) {
-    $('save-panel').hidden = false;
-    $('save-panel').innerHTML = `<div class="acct-panel" style="max-width:none">
-      <h3>Pitches thrown</h3>
-      ${pitchers.map(({ p, inn }) => `<label class="prow">
-        <span>${esc(label(p))} &middot; ${inn} ${inn === 1 ? 'inning' : 'innings'}</span>
-        <input type="number" inputmode="numeric" min="0" max="250" data-pid="${p.id}" placeholder="0">
-      </label>`).join('')}
-      <div class="go">
-        <button type="button" id="save-confirm" class="primary">Save game</button>
-        <button type="button" id="save-cancel">Cancel</button>
-      </div>
-      <p class="hint" style="margin:0">Leave a box empty if you did not count.</p>
-    </div>`;
-    $('save-panel').querySelector('input').focus({ preventScroll: true });
-    return;
+    editingGame = null;
+    return pitchPanel('Pitches thrown', pitchers.map(({ p, inn }) =>
+      ({ pid: p.id, name: label(p), inn, pitches: '' })), 'Save game');
   }
   commitGame({});
+}
+
+// The same panel serves a game being saved and one being corrected later.
+let editingGame = null;
+function pitchPanel(title, rows, confirmText) {
+  $('save-panel').hidden = false;
+  $('save-panel').innerHTML = `<div class="acct-panel" style="max-width:none">
+    <h3>${esc(title)}</h3>
+    ${rows.map(r => `<label class="prow">
+      <span>${esc(r.name)} &middot; ${r.inn} ${r.inn === 1 ? 'inning' : 'innings'}</span>
+      <input type="number" inputmode="numeric" min="0" max="250" data-pid="${esc(r.pid)}"
+        value="${r.pitches}" placeholder="0">
+    </label>`).join('')}
+    <div class="go">
+      <button type="button" id="save-confirm" class="primary">${esc(confirmText)}</button>
+      <button type="button" id="save-cancel">Cancel</button>
+    </div>
+    <p class="hint" style="margin:0">Leave a box empty if you did not count.</p>
+  </div>`;
+  const first = $('save-panel').querySelector('input');
+  if (first) first.focus({ preventScroll: true });
+}
+
+function editCounts(gameId) {
+  const g = s.season.find(x => x.id === gameId);
+  if (!g) return;
+  const rows = Object.entries(g.stats || {})
+    .filter(([, rec]) => (rec.pos || {}).P)
+    .map(([pid, rec]) => ({
+      pid, name: (g.names || {})[pid] || 'Player',
+      inn: rec.pos.P, pitches: rec.pitches || '',
+    }));
+  if (!rows.length) return setStatus('Nobody pitched in that game.');
+  editingGame = gameId;
+  pitchPanel(`Pitches thrown · ${g.date}`, rows, 'Save counts');
+}
+
+// A count over the bracket's daily limit is reported, not hidden. It already
+// happened, and a coach needs to know it did.
+function overDailyMax(pitches, names) {
+  const b = PITCH_SMART[s.pitch.bracket];
+  if (!b) return [];
+  return Object.entries(pitches)
+    .filter(([, n]) => n > b.dailyMax)
+    .map(([pid, n]) => `${names[pid] || 'A pitcher'} threw ${n}, over the ${b.dailyMax} a day for ages ${s.pitch.bracket}`);
 }
 
 function commitGame(pitches) {
@@ -1530,6 +1574,8 @@ function commitGame(pitches) {
   for (const [pid, n] of Object.entries(pitches)) {
     if (stats[pid] && n > 0) stats[pid].pitches = n;
   }
+  const names = Object.fromEntries(here().map(p => [p.id, shortName(p)]));
+  const over = overDailyMax(pitches, names);
   s.season.unshift({
     id: uid(),
     date: s.date || new Date().toISOString().slice(0, 10),
@@ -1542,19 +1588,31 @@ function commitGame(pitches) {
   });
   changed();
   $('season-fold').open = true;
-  setStatus('Game saved to the season.', 'good');
+  if (over.length) setStatus(`Game saved. ${over.join('. ')}.`);
+  else setStatus('Game saved to the season.', 'good');
+}
+
+// Whoever has played least this season gets the strongest nudge, on a 0 to 1
+// scale. A player with no history has played least of all.
+function fairCredit(players) {
+  const totals = seasonTotals();
+  const played = players.map(p => (totals.get(p.id) || { field: 0 }).field);
+  const most = Math.max(...played), least = Math.min(...played);
+  const span = most - least || 1;
+  return played.map(v => (most - v) / span);
 }
 
 function seasonTotals() {
   const totals = new Map();
   for (const g of s.season) {
     for (const [pid, rec] of Object.entries(g.stats || {})) {
-      const t = totals.get(pid) || { name: 'Player', games: 0, field: 0, inf: 0, bench: 0, pos: {} };
+      const t = totals.get(pid) || { name: 'Player', games: 0, field: 0, inf: 0, bench: 0, pitches: 0, pos: {} };
       t.name = (g.names || {})[pid] || t.name;
       t.games++;
       t.field += rec.field || 0;
       t.inf += rec.inf || 0;
       t.bench += rec.bench || 0;
+      t.pitches += rec.pitches || 0;
       for (const [k, n] of Object.entries(rec.pos || {})) t.pos[k] = (t.pos[k] || 0) + n;
       totals.set(pid, t);
     }
@@ -1572,16 +1630,20 @@ function renderSeason() {
   const order = [...mine, ...gone];
   const cols = fieldPositions().filter(k => k === 'P' || k === 'C');
   $('season-sum').textContent = `${s.season.length} ${s.season.length === 1 ? 'game' : 'games'}`;
+  const showPitches = s.pitch.counts;
   let h = `<div class="scroll"><table class="bp"><thead><tr><th class="nm">Player</th><th>Games</th><th>Played</th><th>Infield</th><th>Bench</th>`;
-  h += cols.map(k => `<th>${esc(k)}</th>`).join('') + '</tr></thead><tbody>';
+  h += cols.map(k => `<th>${esc(k)}</th>`).join('') + (showPitches ? '<th>Pitches</th>' : '') + '</tr></thead><tbody>';
   for (const id of order) {
     const t = totals.get(id);
     h += `<tr><td class="nm">${esc(t.name)}</td><td>${t.games}</td><td class="if">${t.field}</td><td>${t.inf}</td><td class="sit">${t.bench}</td>`;
-    h += cols.map(k => `<td>${t.pos[k] || 0}</td>`).join('') + '</tr>';
+    h += cols.map(k => `<td>${t.pos[k] || 0}</td>`).join('');
+    h += showPitches ? `<td>${t.pitches || 0}</td>` : '';
+    h += '</tr>';
   }
   h += '</tbody></table></div>';
   h += `<div class="season-games">${s.season.map(g => `
     <div class="g"><span>${esc(g.date)}${g.opponent ? ' &middot; vs. ' + esc(g.opponent) : ''} &middot; ${g.innings} innings</span>
+    ${showPitches ? `<button type="button" class="cap-add" data-counts="${g.id}">Counts</button>` : ''}
     <button type="button" class="icon" data-game="${g.id}" aria-label="Remove this game">&times;</button></div>`).join('')}</div>`;
   $('season-body').innerHTML = h;
 }
@@ -1598,9 +1660,25 @@ $('save-panel').addEventListener('click', e => {
     const n = parseInt(i.value, 10);
     if (n > 0) pitches[i.dataset.pid] = n;
   });
-  commitGame(pitches);
+  if (!editingGame) return commitGame(pitches);
+  // Correcting a game already saved.
+  const g = s.season.find(x => x.id === editingGame);
+  editingGame = null;
+  $('save-panel').hidden = true;
+  $('save-panel').innerHTML = '';
+  if (!g) return;
+  for (const [pid, rec] of Object.entries(g.stats || {})) {
+    if (pitches[pid]) rec.pitches = pitches[pid];
+    else delete rec.pitches;
+  }
+  changed();
+  const over = overDailyMax(pitches, g.names || {});
+  if (over.length) setStatus(`Counts saved. ${over.join('. ')}.`);
+  else setStatus('Counts saved.', 'good');
 });
 $('season-body').addEventListener('click', e => {
+  const edit = e.target.closest('[data-counts]');
+  if (edit) return editCounts(edit.dataset.counts);
   const btn = e.target.closest('[data-game]');
   if (!btn) return;
   s.season = s.season.filter(g => g.id !== btn.dataset.game);
@@ -1853,6 +1931,7 @@ $('build').addEventListener('click', () => {
     slots: ks, kinds: slotKinds(ks), ruleIF: ks.map(k => countsAsInfield(k, s.pcInfield)), posCaps: s.posCaps,
     playerCaps: Object.fromEntries(Object.entries(pitchLimits()).map(([pid, v]) => [pid, [['P', v.allowed]]])),
     pairRule: s.pitch.catchBlocks ? { after: 'C', blocks: 'P', count: s.pitch.catchBlocks } : null,
+    fairCredit: s.fairSeason && s.season.length ? fairCredit(players) : null,
     innings: s.innings, early: early(), pcInfield: s.pcInfield, minPlay: s.minPlay, players, fixed,
   });
   s.grid = r.assign.map((row, i) => {

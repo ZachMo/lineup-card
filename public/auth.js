@@ -20,6 +20,7 @@
   const SAVE_WAIT = 1500;
 
   let supa = null, user = null, teams = [], teamId = null;
+  let clash = null, clashId = null, confirmDel = false;
   let mode = 'closed';  // closed | password | link | recover
   let loading = false, timer = null, note = '', noteTimer = null, busy = false;
 
@@ -157,12 +158,34 @@
     </form>`;
   }
 
+  const teamName = id => {
+    const t = teams.find(x => x.id === id);
+    return (t && t.name) || s.team || 'this team';
+  };
+
   function signedInHTML() {
+    // Saving a name the account already holds is nearly always the same team
+    // on a new device, not a second team. Ask rather than quietly add a copy.
+    if (clash) {
+      return `<div class="acct">
+        <span class="acct-label"><b>${esc(clash)}</b> is already saved to your account.</span>
+        <button id="acct-clash-update" class="primary">Update it</button>
+        <button id="acct-clash-new">Save as a second team</button>
+        <button id="acct-clash-cancel">Cancel</button>
+      </div>`;
+    }
+    if (confirmDel) {
+      return `<div class="acct">
+        <span class="acct-label">Delete <b>${esc(teamName(teamId))}</b> from your account?</span>
+        <button id="acct-del-yes" class="primary">Delete</button>
+        <button id="acct-del-no">Keep it</button>
+      </div>`;
+    }
     const options = teams.map(t => `<option value="${esc(t.id)}" ${t.id === teamId ? 'selected' : ''}>${esc(t.name || 'My team')}</option>`).join('');
     return `<div class="acct">
       ${teams.length ? `<select id="acct-team" aria-label="Your teams"><option value="">Not saved yet</option>${options}</select>` : ''}
       <button id="acct-save" class="${teamId ? '' : 'primary'}">${teamId ? 'Save now' : 'Save this team'}</button>
-      ${teamId ? '<button id="acct-new">Save as new</button>' : ''}
+      ${teamId ? '<button id="acct-del">Delete team</button>' : ''}
       ${noteHTML()}
       <span class="acct-user">${esc(user.email || 'Signed in')}</span>
       <button id="acct-pass-set">Set a password</button>
@@ -212,7 +235,17 @@
     if (id === 'acct-new-user') return signUp();
     if (id === 'acct-forgot') return forgot();
     if (id === 'acct-save') return saveNow();
-    if (id === 'acct-new') { teamId = null; localStorage.removeItem(TEAM_KEY); return saveNow(); }
+    if (id === 'acct-clash-update') {
+      teamId = clashId;
+      localStorage.setItem(TEAM_KEY, teamId);
+      clash = null;
+      return saveNow();
+    }
+    if (id === 'acct-clash-new') { clash = null; return saveNow(true); }
+    if (id === 'acct-clash-cancel') { clash = null; return render(); }
+    if (id === 'acct-del') { confirmDel = true; return render(); }
+    if (id === 'acct-del-no') { confirmDel = false; return render(); }
+    if (id === 'acct-del-yes') return deleteTeam();
     if (id === 'acct-out') {
       await supa.auth.signOut();
       localStorage.removeItem(TEAM_KEY);
@@ -345,9 +378,14 @@
     };
   }
 
-  async function saveNow() {
+  async function saveNow(anyway) {
     if (!user) return;
     clearTimeout(timer);
+    if (!teamId && !anyway) {
+      const name = (s.team || 'My team').trim().toLowerCase();
+      const twin = teams.find(t => (t.name || '').trim().toLowerCase() === name);
+      if (twin) { clash = s.team || 'My team'; clashId = twin.id; return render(); }
+    }
     if (teamId) {
       const { error } = await supa.from('teams').update(row()).eq('id', teamId);
       if (error) return setNote('Could not save. Your team is still in this browser.', true);
@@ -360,6 +398,19 @@
     localStorage.setItem(TEAM_KEY, teamId);
     await loadTeams();
     setNote('Saved.');
+  }
+
+  // Removes the cloud copy only. The team stays in this browser, so a coach who
+  // deletes a duplicate still has their roster in front of them.
+  async function deleteTeam() {
+    const gone = teamName(teamId);
+    const { error } = await supa.from('teams').delete().eq('id', teamId);
+    confirmDel = false;
+    if (error) return setNote('Could not delete that team.', true);
+    localStorage.removeItem(TEAM_KEY);
+    teamId = null;
+    await loadTeams();
+    setNote(`${gone} deleted from your account. It is still in this browser.`);
   }
 
   // Every edit already calls the app's save(). Follow it to the cloud, once the
