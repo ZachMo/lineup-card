@@ -256,6 +256,15 @@
   .player .tag { font-size: .68rem; font-weight: 800; padding: 3px 8px; border-radius: 999px; background: var(--warn-wash); color: var(--warn); }
   .prefs .chips { display: flex; flex-wrap: wrap; gap: 6px; }
   .prefs .sub2 { font-size: .74rem; font-weight: 700; color: var(--muted); }
+  .cap-chip {
+    font-size: .75rem; font-weight: 700; padding: 4px 9px; border-radius: 999px;
+    border: 1px solid transparent; background: var(--warn-wash); color: var(--warn);
+  }
+  .cap-add { font-size: .75rem; font-weight: 700; padding: 4px 10px; border-radius: 999px; }
+  .prefs select.cap-pos, .prefs select.cap-num {
+    font: inherit; font-size: .8rem; padding: 4px 6px; border-radius: 8px;
+    border: 1px solid var(--border); background: var(--surface); color: var(--ink);
+  }
   .prefs label.tiny { display: grid; gap: 3px; font-size: .72rem; font-weight: 700; color: var(--muted); }
   .prefs label.tiny select {
     font: inherit; font-size: .85rem; font-weight: 500; color: var(--ink);
@@ -413,10 +422,6 @@
         <div class="row" style="margin-top:4px">
           <button id="pos-add" type="button">Add position</button>
         </div>
-        <div class="seg" role="group" aria-label="Outfielders" hidden>
-          <button type="button" data-of="3">3</button>
-          <button type="button" data-of="4">4</button>
-        </div>
       </div>
       <label class="check"><input type="checkbox" id="pc">
         <span>Pitcher and catcher count as infield</span></label>
@@ -483,7 +488,7 @@ function solveLineup(o) {
   const HARD = 1e6, RULE = 1e5, SIT_TWICE = 2e4, SIT_SPREAD = 2e4,
         SIT_SQ = 500, IF_SQ = 40, REPEAT = 60, OF_ROW = 8,
         // Leagues that set a floor on playing time mean it, so this sits high.
-        MIN_PLAY = 5e4, EMPTY_IF = 3e4,
+        MIN_PLAY = 5e4, EMPTY_IF = 3e4, OVER_CAP = 4e4,
         // A coach's wishes, weighed under every fairness rule above them.
         AVOID = 900, PREFER = 150;
   const minPlay = Math.min(o.minPlay || 0, innings);
@@ -507,6 +512,10 @@ function solveLineup(o) {
     Math.max(0, fieldCount - players.reduce((t, _p, pi) => t + (okIn[pi][i] ? 1 : 0), 0)));
   // Nobody is asked for what their time at the game cannot give: a player who
   // arrives in the 5th cannot have an infield inning in the first four.
+  // A ceiling on innings at one spot, such as two at catcher.
+  const capList = players.map(p => Object.entries(p.caps || {})
+    .map(([k, v]) => [slots.indexOf(k), v | 0])
+    .filter(([i]) => i >= 0));
   const windowLen = okIn.map(row => row.reduce((t, ok) => t + (ok ? 1 : 0), 0));
   const okEarly = okIn.map(row => row.slice(0, early).some(Boolean));
   const index = new Map(players.map((p, i) => [p.id, i]));
@@ -562,6 +571,12 @@ function solveLineup(o) {
     }
     // A field spot may stay empty only while the team is short that inning.
     for (let i = 0; i < innings; i++) if (gaps[i] > spare[i]) c += HARD * (gaps[i] - spare[i]);
+    for (let p = 0; p < n; p++) {
+      for (const [sI, max] of capList[p]) {
+        const over = posCnt[p * S + sI] - max;
+        if (over > 0) c += OVER_CAP * over;
+      }
+    }
     let lo = 1e9, hi = -1;
     for (let p = 0; p < n; p++) {
       if (early > 0 && !gotIF[p] && okEarly[p]) c += RULE;
@@ -752,7 +767,7 @@ function parseLine(line) {
   return { num: '', name: clean(t) };
 }
 const clean = t => t.replace(/[|~]/g, '').trim();
-const newPlayer = (num = '', name = '') => ({ id: uid(), num, name, here: true, noP: false, noC: false, noB: false, pref: [], avoid: [], from: 1, to: 0 });
+const newPlayer = (num = '', name = '') => ({ id: uid(), num, name, here: true, noP: false, noC: false, noB: false, pref: [], avoid: [], from: 1, to: 0, caps: {} });
 
 const GRIP = '<svg width="10" height="16" viewBox="0 0 10 16" aria-hidden="true" fill="currentColor"><circle cx="2" cy="2" r="1.5"/><circle cx="8" cy="2" r="1.5"/><circle cx="2" cy="8" r="1.5"/><circle cx="8" cy="8" r="1.5"/><circle cx="2" cy="14" r="1.5"/><circle cx="8" cy="14" r="1.5"/></svg>';
 
@@ -788,6 +803,17 @@ function prefsHTML(p) {
     <div class="sub2">Positions</div>
     <div class="row2">${btns}</div>
     <div class="hint2">Tap once to prefer, again to avoid, again to clear. Build leans this way, but the fairness rules still come first.</div>
+    <div class="sub2">Innings limits</div>
+    <div class="row2">
+      ${Object.entries(p.caps || {}).map(([k, v]) =>
+        `<button type="button" class="cap-chip" data-act="cap-del" data-pos="${esc(k)}"
+          aria-label="Remove the limit of ${v} innings at ${esc(posInfo(k).name)}">${esc(k)} &le; ${v} &times;</button>`).join('')}
+      <select class="cap-pos" aria-label="Position to limit">${fieldPositions()
+        .map(k => `<option value="${esc(k)}">${esc(k)}</option>`).join('')}</select>
+      <select class="cap-num" aria-label="Most innings allowed">${Array.from({ length: s.innings }, (_, i) => i)
+        .map(n => `<option value="${n}">${n}</option>`).join('')}</select>
+      <button type="button" class="cap-add" data-act="cap-add">Add limit</button>
+    </div>
   </div>`;
 }
 
@@ -844,6 +870,18 @@ $('roster').addEventListener('click', e => {
   if (!li) return;
   const p = byId(li.dataset.id);
   if (!p) return;
+  // "No more than two innings at catcher." Kept here, under Options, so a coach
+  // who does not need it never sees it.
+  const capBtn = e.target.closest('[data-act^="cap-"]');
+  if (capBtn) {
+    p.caps = p.caps || {};
+    if (capBtn.dataset.act === 'cap-del') delete p.caps[capBtn.dataset.pos];
+    else {
+      const k = li.querySelector('.cap-pos').value;
+      p.caps[k] = +li.querySelector('.cap-num').value;
+    }
+    return changed(true);
+  }
   // Prefer, avoid, clear. Three taps take a position back to where it started.
   const pos = e.target.closest('.pos-btn');
   if (pos) {
@@ -977,7 +1015,9 @@ function teamLink() {
     + ((p.pref || []).length ? '~pref:' + p.pref.join('.') : '')
     + ((p.avoid || []).length ? '~avoid:' + p.avoid.join('.') : '')
     + ((p.from || 1) > 1 ? '~from:' + p.from : '')
-    + (p.to ? '~to:' + p.to : '')).join('|'));
+    + (p.to ? '~to:' + p.to : '')
+    + (Object.keys(p.caps || {}).length
+      ? '~cap:' + Object.entries(p.caps).map(([k, v]) => `${k}-${v}`).join('.') : '')).join('|'));
   q.set('pos', s.positions.map(p => `${p.k}:${p.name}:${p.kind}`).join('|'));
   q.set('inn', s.innings);
   if (s.minPlay) q.set('min', s.minPlay);
@@ -1007,6 +1047,14 @@ function readLink() {
     };
     p.from = num('from') || 1;
     p.to = num('to');
+    const capFlag = flags.find(f => f.startsWith('cap:'));
+    p.caps = {};
+    if (capFlag) {
+      for (const pair of capFlag.slice(4).split('.')) {
+        const [k, v] = pair.split('-');
+        if (k && v !== undefined) p.caps[k] = Math.max(0, parseInt(v, 10) || 0);
+      }
+    }
     return p;
   }).filter(Boolean);
   // Links made before positions were editable carry `of` instead.
@@ -1347,6 +1395,14 @@ function checkLineup() {
     }
   }
   notes.push(...twice);
+  for (const p of players) {
+    for (const [k, max] of Object.entries(p.caps || {})) {
+      const at = where.filter(w => w[p.id] === k).length;
+      if (at > max) {
+        notes.push(`${shortName(p)} is at ${posInfo(k).name.toLowerCase()} ${at} innings, more than the ${max} set for ${shortName(p)}.`);
+      }
+    }
+  }
   if (s.minPlay) {
     // A player here for three innings cannot play five, so the floor is whichever
     // is smaller: the league's minimum, or the innings they are at the game.
