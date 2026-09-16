@@ -137,6 +137,15 @@
   .seg button[aria-pressed=true] { background: var(--accent); color: var(--accent-ink); }
   .check { display: flex; gap: 8px; align-items: flex-start; font-size: .88rem; }
   .check input { margin-top: 3px; accent-color: var(--accent); }
+  /* The position editor. A coach names what their league actually plays. */
+  .posrow { display: flex; align-items: center; gap: 6px; padding: 3px 0; }
+  .posrow input { font: inherit; font-size: .88rem; padding: 6px 8px; border-radius: 8px;
+    border: 1px solid var(--border); background: var(--plane); color: var(--ink); }
+  .posrow .abbr-in { width: 4.2em; flex: none; font-weight: 700; text-align: center; }
+  .posrow .name-in { flex: 1 1 auto; min-width: 0; }
+  .posrow .kind { flex: none; width: 3.1em; padding: 5px 0; font-size: .72rem; font-weight: 800; color: var(--muted); }
+  .posrow .kind[aria-pressed=true] { background: var(--accent-wash); color: var(--accent); border-color: transparent; }
+  button.preset { padding: 5px 11px; font-size: .8rem; }
 
   /* Lineup */
   .lineup-head { display: flex; flex-wrap: wrap; gap: 10px 16px; align-items: flex-end; justify-content: space-between; margin-bottom: 10px; }
@@ -394,8 +403,17 @@
       <label class="field">Everyone plays at least
         <select class="plain" id="minplay"></select>
       </label>
-      <div class="field">Outfielders
-        <div class="seg" role="group" aria-label="Outfielders">
+      <div class="field">Positions
+        <div class="row" style="gap:6px;margin-bottom:4px">
+          <button type="button" class="preset" data-preset="standard">Standard</button>
+          <button type="button" class="preset" data-preset="coach">Coach pitch</button>
+          <button type="button" class="preset" data-preset="three">3 outfield</button>
+        </div>
+        <div id="pos-edit"></div>
+        <div class="row" style="margin-top:4px">
+          <button id="pos-add" type="button">Add position</button>
+        </div>
+        <div class="seg" role="group" aria-label="Outfielders" hidden>
           <button type="button" data-of="3">3</button>
           <button type="button" data-of="4">4</button>
         </div>
@@ -454,17 +472,6 @@ const POS = {
 };
 const isBenchKey = k => /^B\d+$/.test(k);
 
-function fieldPositions(outfield) {
-  return ['P', 'C', '1B', '2B', '3B', 'SS', ...(outfield === 3 ? ['LF', 'CF', 'RF'] : ['LF', 'LCF', 'RCF', 'RF'])];
-}
-function slotsFor(outfield, playerCount) {
-  const pos = fieldPositions(outfield);
-  const bench = Math.max(0, playerCount - pos.length);
-  return [...pos, ...Array.from({ length: bench }, (_, i) => 'B' + (i + 1))];
-}
-function countsAsInfield(key, pcInfield) {
-  return POS[key] && POS[key].kind === 'IF' && (pcInfield || (key !== 'P' && key !== 'C'));
-}
 
 // Fills every open spot. Spots in `fixed` stay put.
 // players: [{id, noP, noC}]; fixed: per inning {slotKey: playerId}.
@@ -482,9 +489,12 @@ function solveLineup(o) {
   const minPlay = Math.min(o.minPlay || 0, innings);
 
   const bench = slots.map(isBenchKey);
-  const inf = slots.map(k => !!POS[k] && POS[k].kind === 'IF');
-  const out = slots.map(k => !!POS[k] && POS[k].kind === 'OF');
-  const rule = slots.map(k => countsAsInfield(k, o.pcInfield));
+  // Positions are the coach's to name, so the caller says what each slot is:
+  // kinds[s] is 'IF', 'OF' or 'B', and ruleIF[s] says whether it counts for the
+  // infield rule.
+  const inf = o.kinds.map(x => x === 'IF');
+  const out = o.kinds.map(x => x === 'OF');
+  const rule = o.ruleIF;
   const pIdx = slots.indexOf('P'), cIdx = slots.indexOf('C');
   const noP = players.map(p => !!p.noP), noC = players.map(p => !!p.noC), noB = players.map(p => !!p.noB);
   const slotSet = keys => new Set((keys || []).map(k => slots.indexOf(k)).filter(i => i >= 0));
@@ -609,10 +619,35 @@ function shuffle(a) {
 }
 // ---- SOLVER END ----
 
+// ---- Positions ----
+// Leagues differ. Some have no pitcher because a coach pitches, some field three
+// outfielders, some add a rover. So the list of positions is the coach's, and
+// POS above is only the starting point.
+const STANDARD = ['P', 'C', '1B', '2B', '3B', 'SS', 'LF', 'LCF', 'RCF', 'RF'];
+const PRESETS = {
+  standard: STANDARD,
+  coach: STANDARD.filter(k => k !== 'P'),
+  three: ['P', 'C', '1B', '2B', '3B', 'SS', 'LF', 'CF', 'RF'],
+};
+const posFromKeys = keys => keys.map(k => ({ k, name: POS[k].name, kind: POS[k].kind }));
+function posInfo(k) {
+  return (s.positions || []).find(p => p.k === k) || POS[k] || { k, name: k, kind: 'OF' };
+}
+function fieldPositions() { return (s.positions || []).map(p => p.k); }
+function slotsFor(playerCount) {
+  const pos = fieldPositions();
+  const bench = Math.max(0, playerCount - pos.length);
+  return [...pos, ...Array.from({ length: bench }, (_, i) => 'B' + (i + 1))];
+}
+function countsAsInfield(key, pcInfield) {
+  return posInfo(key).kind === 'IF' && (pcInfield || (key !== 'P' && key !== 'C'));
+}
+const slotKinds = ks => ks.map(k => isBenchKey(k) ? 'B' : posInfo(k).kind);
+
 const KEY = 'lineup-card-v1';
 const DEFAULTS = {
   team: '', opponent: '', date: '', innings: 6, early: 4, outfield: 4,
-  minPlay: 0, pcInfield: true, printPlayers: true, players: [], grid: [],
+  positions: [], minPlay: 0, pcInfield: true, printPlayers: true, players: [], grid: [],
 };
 let s = load();
 let undoStack = [];
@@ -650,18 +685,32 @@ function windowSaid(p) {
   if (to) return `gone after inning ${to}`;
   return 'here all game';
 }
-const slots = () => slotsFor(s.outfield, here().length);
+const slots = () => slotsFor(here().length);
 const early = () => Math.min(s.early, s.innings);
 const byId = id => s.players.find(p => p.id === id);
 const label = p => (p.num !== '' && p.num != null ? '#' + p.num + ' ' : '') + (p.name || 'Player');
 const shortName = p => p.name || (p.num ? '#' + p.num : 'Player');
-function posName(k) { return isBenchKey(k) ? 'Bench' : POS[k].name; }
+function posName(k) { return isBenchKey(k) ? 'Bench' : posInfo(k).name; }
 
 // Keep the grid in step with the roster and settings.
 function normalize() {
   s.innings = Math.max(1, Math.min(9, s.innings | 0));
   s.early = Math.max(0, Math.min(9, s.early | 0)); // 0 means the league has no infield rule.
   s.minPlay = Math.max(0, Math.min(s.innings, s.minPlay | 0)); // 0 means no minimum.
+  // A team saved before positions were editable has none, so start from the
+  // standard set that matches how they had the outfield set.
+  if (!Array.isArray(s.positions) || !s.positions.length) {
+    s.positions = posFromKeys(s.outfield === 3 ? PRESETS.three : PRESETS.standard);
+  }
+  const seenKeys = new Set();
+  s.positions = s.positions
+    .filter(p => p && p.k && !seenKeys.has(p.k) && seenKeys.add(p.k))
+    .map(p => ({
+      k: String(p.k).replace(/[|:~]/g, '').trim().slice(0, 4) || 'X',
+      name: String(p.name || p.k).replace(/[|:~]/g, '').trim().slice(0, 24),
+      kind: p.kind === 'IF' ? 'IF' : 'OF',
+    }));
+  if (!s.positions.length) s.positions = posFromKeys(PRESETS.standard);
   for (const p of s.players) {
     p.from = Math.max(1, Math.min(s.innings, p.from || 1));
     p.to = p.to ? Math.max(p.from, Math.min(s.innings, p.to)) : 0;
@@ -712,11 +761,11 @@ let openPrefs = null;
 
 function prefsHTML(p) {
   const pref = new Set(p.pref || []), avoid = new Set(p.avoid || []);
-  const btns = fieldPositions(s.outfield).map(k => {
+  const btns = fieldPositions().map(k => {
     const state = pref.has(k) ? 'pref' : avoid.has(k) ? 'avoid' : 'none';
     const said = state === 'pref' ? 'prefers' : state === 'avoid' ? 'avoids' : 'has no preference for';
     return `<button type="button" class="pos-btn" data-pos="${k}" data-state="${state}"
-      aria-label="${esc(shortName(p))} ${said} ${POS[k].name}">${k}</button>`;
+      aria-label="${esc(shortName(p))} ${said} ${esc(posInfo(k).name)}">${esc(k)}</button>`;
   }).join('');
   return `<div class="prefs">
     <div class="chips">
@@ -929,7 +978,7 @@ function teamLink() {
     + ((p.avoid || []).length ? '~avoid:' + p.avoid.join('.') : '')
     + ((p.from || 1) > 1 ? '~from:' + p.from : '')
     + (p.to ? '~to:' + p.to : '')).join('|'));
-  q.set('of', s.outfield);
+  q.set('pos', s.positions.map(p => `${p.k}:${p.name}:${p.kind}`).join('|'));
   q.set('inn', s.innings);
   if (s.minPlay) q.set('min', s.minPlay);
   return location.origin + location.pathname + '#' + q.toString();
@@ -948,7 +997,7 @@ function readLink() {
     p.noB = flags.includes('noB');
     const spots = tag => {
       const found = flags.find(f => f.startsWith(tag + ':'));
-      return found ? found.slice(tag.length + 1).split('.').filter(k => POS[k]) : [];
+      return found ? found.slice(tag.length + 1).split('.').filter(Boolean) : [];
     };
     p.pref = spots('pref');
     p.avoid = spots('avoid');
@@ -960,7 +1009,13 @@ function readLink() {
     p.to = num('to');
     return p;
   }).filter(Boolean);
-  return { team: q.get('team') || '', players, outfield: q.get('of') === '3' ? 3 : 4,
+  // Links made before positions were editable carry `of` instead.
+  const posParam = q.get('pos');
+  const positions = posParam ? posParam.split('|').map(e => {
+    const [k, name, kind] = e.split(':');
+    return k ? { k, name: name || k, kind: kind === 'IF' ? 'IF' : 'OF' } : null;
+  }).filter(Boolean) : null;
+  return { team: q.get('team') || '', players, outfield: q.get('of') === '3' ? 3 : 4, positions,
     innings: +q.get('inn') || null, minPlay: +q.get('min') || 0 };
 }
 function applyLink() {
@@ -973,6 +1028,8 @@ function applyLink() {
   s.team = link.team;
   s.players = link.players;
   s.outfield = link.outfield;
+  s.positions = link.positions && link.positions.length ? link.positions
+    : posFromKeys(link.outfield === 3 ? PRESETS.three : PRESETS.standard);
   if (link.innings) s.innings = link.innings;
   if (link.minPlay) s.minPlay = link.minPlay;
   s.grid = [];
@@ -1003,11 +1060,11 @@ function renderSettings() {
   $('minplay').innerHTML = `<option value="0" ${!s.minPlay ? 'selected' : ''}>No minimum</option>` +
     Array.from({ length: s.innings }, (_, i) => i + 1)
       .map(n => `<option value="${n}" ${n === s.minPlay ? 'selected' : ''}>${n === 1 ? '1 inning' : n + ' innings'}</option>`).join('');
-  document.querySelectorAll('[data-of]').forEach(b => b.setAttribute('aria-pressed', +b.dataset.of === s.outfield));
+  renderPositions();
   $('pc').checked = s.pcInfield;
   $('print-players').checked = s.printPlayers;
   // The folded panel still says what it holds.
-  const bits = [`${s.innings} innings`, `${s.outfield} outfielders`,
+  const bits = [`${s.innings} innings`, `${fieldPositions().length} positions`,
     early() ? `infield by inning ${early()}` : 'no infield rule'];
   if (s.minPlay) bits.push(`everyone plays ${s.minPlay}+`);
   if (s.opponent) bits.unshift('vs. ' + s.opponent);
@@ -1019,7 +1076,48 @@ $('date').addEventListener('input', e => { s.date = e.target.value; save(); rend
 $('innings').addEventListener('change', e => { s.innings = +e.target.value; changed(); });
 $('early').addEventListener('change', e => { s.early = +e.target.value; changed(); });
 $('minplay').addEventListener('change', e => { s.minPlay = +e.target.value; changed(); });
-document.querySelectorAll('[data-of]').forEach(b => b.addEventListener('click', () => { s.outfield = +b.dataset.of; changed(); }));
+function renderPositions() {
+  $('pos-edit').innerHTML = s.positions.map((p, i) => `
+    <div class="posrow" data-i="${i}">
+      <input type="text" class="abbr-in" data-pf="k" value="${esc(p.k)}" maxlength="4" aria-label="Short name, such as SS">
+      <input type="text" class="name-in" data-pf="name" value="${esc(p.name)}" aria-label="Position name">
+      <button type="button" class="kind" data-act="kind" aria-pressed="${p.kind === 'IF'}"
+        title="${p.kind === 'IF' ? 'Counts as infield' : 'Counts as outfield'}">${p.kind}</button>
+      <button type="button" class="icon" data-act="drop" aria-label="Remove ${esc(p.name)}">&times;</button>
+    </div>`).join('');
+}
+
+// Typing is saved as it goes, but the lineup is only rebuilt when the field is
+// left. Renaming a spot mid-keystroke would otherwise drop players from it.
+$('pos-edit').addEventListener('input', e => {
+  const row = e.target.closest('.posrow'), f = e.target.dataset.pf;
+  if (!row || !f) return;
+  const p = s.positions[+row.dataset.i];
+  if (p) { p[f] = e.target.value; save(); }
+});
+$('pos-edit').addEventListener('change', e => {
+  if (e.target.closest('.posrow')) changed();
+});
+$('pos-edit').addEventListener('click', e => {
+  const row = e.target.closest('.posrow'), btn = e.target.closest('button[data-act]');
+  if (!row || !btn) return;
+  const i = +row.dataset.i, p = s.positions[i];
+  if (!p) return;
+  if (btn.dataset.act === 'kind') p.kind = p.kind === 'IF' ? 'OF' : 'IF';
+  if (btn.dataset.act === 'drop') s.positions.splice(i, 1);
+  changed();
+});
+$('pos-add').addEventListener('click', () => {
+  s.positions.push({ k: 'NEW', name: 'New position', kind: 'OF' });
+  changed();
+  const last = $('pos-edit').lastElementChild;
+  if (last) last.querySelector('input').select();
+});
+document.querySelectorAll('[data-preset]').forEach(b => b.addEventListener('click', () => {
+  s.positions = posFromKeys(PRESETS[b.dataset.preset]);
+  s.outfield = b.dataset.preset === 'three' ? 3 : 4;
+  changed();
+}));
 $('pc').addEventListener('change', e => { s.pcInfield = e.target.checked; changed(); });
 $('print-players').addEventListener('change', e => { s.printPlayers = e.target.checked; changed(); });
 
@@ -1068,7 +1166,7 @@ function renderLineup() {
     const isB = isBenchKey(k);
     const cls = isB ? 'bench' + (benchSeen ? '' : ' bench-first') : '';
     if (isB) benchSeen = true;
-    h += `<tr class="${cls}"><th scope="row"><span class="abbr">${isB ? 'Bench' : k}</span>${isB ? '' : `<span class="full">${POS[k].name}</span>`}</th>`;
+    h += `<tr class="${cls}"><th scope="row"><span class="abbr">${isB ? 'Bench' : esc(k)}</span>${isB ? '' : `<span class="full">${esc(posInfo(k).name)}</span>`}</th>`;
     for (let i = 0; i < inn; i++) {
       const c = s.grid[i][k];
       const p = c && byId(c.pid);
@@ -1116,7 +1214,7 @@ function renderInningView(ks, players, where) {
       return `<option value="${q.id}" ${p && p.id === q.id ? 'selected' : ''}>${esc(label(q) + note)}</option>`;
     }).join('');
     h += `<div class="inn-row${isB ? ' bench' : ''}${c && c.lock ? ' set' : ''}">
-      <span class="lab">${isB ? 'Bench' : k}${isB ? '' : `<small>${POS[k].name}</small>`}</span>
+      <span class="lab">${isB ? 'Bench' : esc(k)}${isB ? '' : `<small>${esc(posInfo(k).name)}</small>`}</span>
       <select data-inn="${i}" data-slot="${k}" class="${p ? '' : 'empty'}"
         aria-label="Inning ${i + 1}, ${posName(k)}"><option value="">—</option>${opts}</select>
     </div>`;
@@ -1149,7 +1247,7 @@ function renderPlayersView(ks, where) {
       const k = where[i][p.id];
       if (!k) { cells += '<td class="sit">·</td>'; continue; }
       if (isBenchKey(k)) { sat++; cells += '<td class="sit">Bench</td>'; continue; }
-      const isIF = POS[k].kind === 'IF';
+      const isIF = posInfo(k).kind === 'IF';
       if (isIF) ifc++; else ofc++;
       cells += `<td class="${isIF ? 'if' : ''}">${k}</td>`;
     }
@@ -1167,7 +1265,7 @@ function checkLineup() {
   const placed = s.grid.reduce((n, row) => n + Object.keys(row).length, 0);
   if (!placed) return ['The lineup is empty.'];
   const notes = [];
-  const fieldCount = fieldPositions(s.outfield).length;
+  const fieldCount = fieldPositions().length;
   s.players.forEach((p, i) => {
     if (p.here !== false && !p.name && !p.num) notes.push(`Player ${i + 1} on the team list has no name or number.`);
   });
@@ -1186,15 +1284,15 @@ function checkLineup() {
   // One note covers the open outfield spots a short roster leaves, instead of one per inning.
   if (players.length < fieldCount) {
     const open = fieldCount - players.length;
-    notes.push(`Only ${players.length} players are here for ${fieldCount} positions, so ${open === 1 ? 'an outfield spot stays' : open + ' outfield spots stay'} empty each inning.` +
-      (s.outfield === 4 && players.length >= 9 ? ' Switch to 3 outfielders to fill every spot.' : ''));
+    notes.push(`Only ${players.length} players are here for ${fieldCount} positions, so ${open === 1 ? 'a spot stays' : open + ' spots stay'} empty each inning.` +
+      ' Remove a position in Game settings to fill every spot.');
   }
   for (let i = 0; i < inn; i++) {
     const row = s.grid[i];
     if (!Object.keys(row).length) { notes.push(`Inning ${i + 1} is empty.`); continue; }
     for (const k of ks) {
       if (row[k] || isBenchKey(k)) continue;
-      if (POS[k].kind === 'IF' || players.length >= fieldCount) notes.push(`Inning ${i + 1} has no ${POS[k].name.toLowerCase()}.`);
+      if (posInfo(k).kind === 'IF' || players.length >= fieldCount) notes.push(`Inning ${i + 1} has no ${posInfo(k).name.toLowerCase()}.`);
     }
     // Someone who has not arrived yet, or has gone home, is not "left out".
     const missing = players.filter(p => playsIn(p, i) && !where[i][p.id]);
@@ -1204,7 +1302,7 @@ function checkLineup() {
       if (k === 'P' && p.noP) notes.push(`${shortName(p)} pitches in inning ${i + 1}, but P is off for ${shortName(p)}.`);
       if (k === 'C' && p.noC) notes.push(`${shortName(p)} catches in inning ${i + 1}, but C is off for ${shortName(p)}.`);
       if (k && isBenchKey(k) && p.noB) notes.push(`${shortName(p)} sits in inning ${i + 1}, but Bench is off for ${shortName(p)}.`);
-      if (k && !isBenchKey(k) && (p.avoid || []).includes(k)) notes.push(`${shortName(p)} is at ${POS[k].name.toLowerCase()} in inning ${i + 1}, a position ${shortName(p)} avoids.`);
+      if (k && !isBenchKey(k) && (p.avoid || []).includes(k)) notes.push(`${shortName(p)} is at ${posInfo(k).name.toLowerCase()} in inning ${i + 1}, a position ${shortName(p)} avoids.`);
       if (k && !playsIn(p, i)) notes.push(`${shortName(p)} is in the lineup for inning ${i + 1}, but is ${windowSaid(p)}.`);
     }
   }
@@ -1233,7 +1331,7 @@ function checkLineup() {
   if (e > 0 && noIF.length) {
     notes.push(`${list(noIF)} ${noIF.length === 1 ? 'has' : 'have'} no infield inning in ${range}.`);
     // Say why, not just what. First the arithmetic that makes it impossible.
-    const infieldKeys = fieldPositions(s.outfield).filter(k => countsAsInfield(k, s.pcInfield));
+    const infieldKeys = fieldPositions().filter(k => countsAsInfield(k, s.pcInfield));
     const seats = e * infieldKeys.length;
     if (seats < players.length) {
       notes.push(`There are ${seats} infield spots in ${range} and ${players.length} players. Move the infield rule to a later inning, or turn it off.`);
@@ -1337,7 +1435,10 @@ $('build').addEventListener('click', () => {
     for (const k in row) if (row[k].lock) f[k] = row[k].pid;
     return f;
   });
-  const r = solveLineup({ slots: ks, innings: s.innings, early: early(), pcInfield: s.pcInfield, minPlay: s.minPlay, players, fixed });
+  const r = solveLineup({
+    slots: ks, kinds: slotKinds(ks), ruleIF: ks.map(k => countsAsInfield(k, s.pcInfield)),
+    innings: s.innings, early: early(), pcInfield: s.pcInfield, minPlay: s.minPlay, players, fixed,
+  });
   s.grid = r.assign.map((row, i) => {
     const o = {};
     row.forEach((p, j) => {

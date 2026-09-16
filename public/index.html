@@ -76,8 +76,9 @@
   /* Illustrations sit on their own flat blue, so the edges disappear. */
   .art { background: var(--art); border-radius: 16px; overflow: hidden; box-shadow: var(--shadow); }
   .art img { display: block; width: 100%; height: auto; }
-  /* No crop on a wide screen. Cropping this art to a letterbox cut the coach's
-     head off, and the drawing already sits on its own flat blue. */
+  /* No crop on a wide screen: a letterbox cut the coach's head off. Hold the
+     size down by capping the width instead. */
+  .art.banner { max-width: 640px; margin-inline: auto; }
   .art.banner img { aspect-ratio: auto; }
 
   figure { margin: 0; }
