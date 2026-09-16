@@ -195,6 +195,10 @@
   }
   .lockcol[aria-pressed=true] { background: var(--set); border-color: var(--set-edge); color: var(--ink); }
 
+  .prow { display: flex; align-items: center; gap: 10px; padding: 5px 0; font-size: .9rem; }
+  .prow span { flex: 1 1 auto; }
+  .prow input { width: 5.5em; font: inherit; font-size: 16px; padding: 7px 9px; border-radius: 8px;
+    border: 1px solid var(--border); background: var(--plane); color: var(--ink); }
   .season-games { display: grid; gap: 4px; margin-top: 10px; font-size: .85rem; color: var(--ink-2); }
   .season-games .g { display: flex; align-items: center; gap: 10px; }
   .season-games .g span { flex: 1 1 auto; }
@@ -448,6 +452,12 @@
               <select class="plain" id="pi-rest-days"></select>
             </label>
           </div>
+          <label class="check"><input type="checkbox" id="pi-counts">
+            <span>Track pitch counts</span></label>
+          <label class="field" id="pi-bracket-wrap" hidden>Pitch Smart bracket
+            <select class="plain" id="pi-bracket"></select>
+          </label>
+          <p class="hint" id="pi-table" style="margin:0" hidden></p>
           <p class="hint" style="margin:0">Weekly innings and rest days count the games you have saved to the season.</p>
         </div>
       </details>
@@ -486,6 +496,7 @@
     <div class="scroll" id="chart"></div>
     <div class="batting print-only" id="batting"></div>
     <div class="players-view" id="players-view"></div>
+    <div id="save-panel" class="no-print" hidden></div>
     <details class="fold no-print" id="season-fold" hidden>
       <summary>Season<span class="fold-sum" id="season-sum"></span></summary>
       <div class="body" id="season-body"></div>
@@ -695,6 +706,26 @@ const PRESETS = {
   coach: STANDARD.filter(k => k !== 'P'),
   three: ['P', 'C', '1B', '2B', '3B', 'SS', 'LF', 'CF', 'RF'],
 };
+// Pitch Smart rest, by age bracket. A coach picks the one their league plays
+// under. Each row is [up to this many pitches, days of rest owed]. These follow
+// the published tables, but leagues amend them, so the panel says to check.
+const PITCH_SMART = {
+  '7-8':   { dailyMax: 50,  rest: [[20, 0], [35, 1], [50, 2]] },
+  '9-10':  { dailyMax: 75,  rest: [[20, 0], [35, 1], [50, 2], [65, 3], [999, 4]] },
+  '11-12': { dailyMax: 85,  rest: [[20, 0], [35, 1], [50, 2], [65, 3], [999, 4]] },
+  '13-14': { dailyMax: 95,  rest: [[20, 0], [35, 1], [50, 2], [65, 3], [999, 4]] },
+  '15-16': { dailyMax: 95,  rest: [[30, 0], [45, 1], [60, 2], [75, 3], [999, 4]] },
+  '17-18': { dailyMax: 105, rest: [[30, 0], [45, 1], [60, 2], [75, 3], [999, 4]] },
+  '19-22': { dailyMax: 120, rest: [[30, 0], [45, 1], [60, 2], [75, 3], [999, 4]] },
+};
+// Days of rest owed after throwing this many pitches.
+function restForPitches(n) {
+  const b = PITCH_SMART[s.pitch.bracket];
+  if (!b || !n) return 0;
+  for (const [upTo, days] of b.rest) if (n <= upTo) return days;
+  return b.rest[b.rest.length - 1][1];
+}
+
 const posFromKeys = keys => keys.map(k => ({ k, name: POS[k].name, kind: POS[k].kind }));
 function posInfo(k) {
   return (s.positions || []).find(p => p.k === k) || POS[k] || { k, name: k, kind: 'OF' };
@@ -716,7 +747,7 @@ const DEFAULTS = {
   positions: [], posCaps: {}, minPlay: 0, pcInfield: true, printPlayers: true, players: [], grid: [],
   season: [],
   // All off until a coach turns them on.
-  pitch: { maxWeek: 0, restInnings: 0, restDays: 0, catchBlocks: 0 },
+  pitch: { maxWeek: 0, restInnings: 0, restDays: 0, catchBlocks: 0, counts: false, bracket: '' },
 };
 let s = load();
 let undoStack = [];
@@ -796,6 +827,8 @@ function normalize() {
     restInnings: Math.max(0, Math.min(9, pr.restInnings | 0)),
     restDays: Math.max(0, Math.min(7, pr.restDays | 0)),
     catchBlocks: Math.max(0, Math.min(9, pr.catchBlocks | 0)),
+    counts: !!pr.counts,
+    bracket: PITCH_SMART[pr.bracket] ? pr.bracket : '',
   };
   for (const p of s.players) {
     p.from = Math.max(1, Math.min(s.innings, p.from || 1));
@@ -1191,12 +1224,30 @@ function renderPitchRules() {
   $('pi-catch').value = s.pitch.catchBlocks;
   $('pi-rest-inn').value = s.pitch.restInnings;
   $('pi-rest-days').value = s.pitch.restDays;
+  $('pi-counts').checked = s.pitch.counts;
+  $('pi-bracket-wrap').hidden = !s.pitch.counts;
+  $('pi-table').hidden = !s.pitch.counts;
+  if (s.pitch.counts) {
+    $('pi-bracket').innerHTML = '<option value="">Pick an age bracket</option>' +
+      Object.keys(PITCH_SMART).map(b => `<option value="${b}" ${b === s.pitch.bracket ? 'selected' : ''}>Ages ${b}</option>`).join('');
+    const b = PITCH_SMART[s.pitch.bracket];
+    $('pi-table').innerHTML = b
+      ? `${b.dailyMax} pitches a day. Rest owed: ` + b.rest.map(([upTo, days], i) => {
+          const from = i ? b.rest[i - 1][0] + 1 : 1;
+          const span = upTo >= 999 ? `${from}+` : `${from}–${upTo}`;
+          return `${span} &rarr; ${days} ${days === 1 ? 'day' : 'days'}`;
+        }).join(', ') + '. <b>Check this against your league’s table.</b>'
+      : 'Pick your bracket and the rest days follow it.';
+  }
   const on = [];
+  if (s.pitch.counts && s.pitch.bracket) on.push(`counts, ages ${s.pitch.bracket}`);
   if (s.pitch.maxWeek) on.push(`${s.pitch.maxWeek} a week`);
   if (s.pitch.restInnings && s.pitch.restDays) on.push(`${s.pitch.restDays} days rest after ${s.pitch.restInnings}`);
   if (s.pitch.catchBlocks) on.push(`no pitching after ${s.pitch.catchBlocks} catching`);
   $('pitch-sum').textContent = on.length ? on.join(' · ') : 'off';
 }
+$('pi-counts').addEventListener('change', e => { s.pitch.counts = e.target.checked; changed(); });
+$('pi-bracket').addEventListener('change', e => { s.pitch.bracket = e.target.value; changed(); });
 ['pi-week', 'pi-catch', 'pi-rest-inn', 'pi-rest-days'].forEach(id => {
   $(id).addEventListener('change', e => {
     const key = { 'pi-week': 'maxWeek', 'pi-catch': 'catchBlocks', 'pi-rest-inn': 'restInnings', 'pi-rest-days': 'restDays' }[id];
@@ -1216,6 +1267,19 @@ function pitchLimits() {
   const innAt = (g, pid) => ((g.stats || {})[pid] || {}).pos ? (g.stats[pid].pos.P || 0) : 0;
   for (const p of here()) {
     let allowed = Infinity, reason = '';
+    // A recorded pitch count outranks the innings rule: it is the real measure.
+    if (s.pitch.counts && s.pitch.bracket) {
+      for (const g of s.season) {
+        const thrown = ((g.stats || {})[p.id] || {}).pitches || 0;
+        const owed = restForPitches(thrown);
+        if (!owed) continue;
+        const gap = (today - when(g.date)) / day;
+        if (gap >= 0 && gap < owed) {
+          allowed = 0;
+          reason = `threw ${thrown} pitches on ${g.date}, resting ${owed} ${owed === 1 ? 'day' : 'days'}`;
+        }
+      }
+    }
     if (s.pitch.restInnings && s.pitch.restDays) {
       for (const g of s.season) {
         const n = innAt(g, p.id);
@@ -1432,8 +1496,40 @@ function gameStats() {
   return stats;
 }
 
+// With counts turned on, the coach is asked for them once, at save time.
 function saveGame() {
   if (!s.grid.some(row => Object.keys(row).length)) return setStatus('Build a lineup first.');
+  const where = whereMap();
+  const pitchers = here()
+    .map(p => ({ p, inn: where.filter(w => w[p.id] === 'P').length }))
+    .filter(x => x.inn > 0);
+  if (s.pitch.counts && s.pitch.bracket && pitchers.length) {
+    $('save-panel').hidden = false;
+    $('save-panel').innerHTML = `<div class="acct-panel" style="max-width:none">
+      <h3>Pitches thrown</h3>
+      ${pitchers.map(({ p, inn }) => `<label class="prow">
+        <span>${esc(label(p))} &middot; ${inn} ${inn === 1 ? 'inning' : 'innings'}</span>
+        <input type="number" inputmode="numeric" min="0" max="250" data-pid="${p.id}" placeholder="0">
+      </label>`).join('')}
+      <div class="go">
+        <button type="button" id="save-confirm" class="primary">Save game</button>
+        <button type="button" id="save-cancel">Cancel</button>
+      </div>
+      <p class="hint" style="margin:0">Leave a box empty if you did not count.</p>
+    </div>`;
+    $('save-panel').querySelector('input').focus({ preventScroll: true });
+    return;
+  }
+  commitGame({});
+}
+
+function commitGame(pitches) {
+  $('save-panel').hidden = true;
+  $('save-panel').innerHTML = '';
+  const stats = gameStats();
+  for (const [pid, n] of Object.entries(pitches)) {
+    if (stats[pid] && n > 0) stats[pid].pitches = n;
+  }
   s.season.unshift({
     id: uid(),
     date: s.date || new Date().toISOString().slice(0, 10),
@@ -1442,7 +1538,7 @@ function saveGame() {
     // Names are kept with the game, so the season still reads if a player
     // leaves the roster or changes number.
     names: Object.fromEntries(here().map(p => [p.id, label(p)])),
-    stats: gameStats(),
+    stats,
   });
   changed();
   $('season-fold').open = true;
@@ -1490,6 +1586,20 @@ function renderSeason() {
   $('season-body').innerHTML = h;
 }
 $('save-game').addEventListener('click', saveGame);
+$('save-panel').addEventListener('click', e => {
+  if (e.target.id === 'save-cancel') {
+    $('save-panel').hidden = true;
+    $('save-panel').innerHTML = '';
+    return;
+  }
+  if (e.target.id !== 'save-confirm') return;
+  const pitches = {};
+  $('save-panel').querySelectorAll('input[data-pid]').forEach(i => {
+    const n = parseInt(i.value, 10);
+    if (n > 0) pitches[i.dataset.pid] = n;
+  });
+  commitGame(pitches);
+});
 $('season-body').addEventListener('click', e => {
   const btn = e.target.closest('[data-game]');
   if (!btn) return;

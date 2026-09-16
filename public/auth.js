@@ -193,7 +193,9 @@
     // Two different limits, and the wait is very different. The per-address one
     // is seconds. The hourly cap on the whole project is not.
     if (/for security purposes|seconds/i.test(m)) return 'That was quick. Wait a few seconds and try again.';
-    if (/rate limit|too many/i.test(m)) return 'Too many emails have gone out in the last hour. Try a password, or try again later.';
+    // Supabase sends this one as prose or as a bare code, such as
+    // over_email_send_rate_limit, and a coach should never see the code.
+    if (/rate[ _]limit|too many/i.test(m)) return 'Too many emails have gone out in the last hour. Try a password, or try again later.';
     return m;
   }
 
