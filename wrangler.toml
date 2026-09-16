@@ -6,5 +6,12 @@
 name = "lineup-card"
 compatibility_date = "2026-09-15"
 
+# The addresses this Worker answers on. Listing them here means a deploy
+# restores them, instead of depending on clicks in the dashboard.
+routes = [
+  { pattern = "lineupcardcoach.com", custom_domain = true },
+  { pattern = "www.lineupcardcoach.com", custom_domain = true },
+]
+
 [assets]
 directory = "./public"
