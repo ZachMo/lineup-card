@@ -2,7 +2,7 @@
   "name": "Lineup Card",
   "short_name": "Lineup",
   "description": "Set a youth baseball lineup for every inning, then print or share it.",
-  "start_url": "/app.html",
+  "start_url": "/app",
   "scope": "/",
   "display": "standalone",
   "background_color": "#f4f4f0",
