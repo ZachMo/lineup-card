@@ -99,10 +99,14 @@ rate limit together.
 6. In Supabase, open **Authentication > Emails > SMTP**, or press Cmd+K and type
    `SMTP`. The menus move between redesigns; the command palette does not. Turn
    on custom SMTP:
-   - Host `smtp.resend.com`, port `465`
+   - Host `smtp.resend.com`, port `587`
    - Username `resend`
    - Password: the Resend API key
-   - Sender email `noreply@lineupcardcoach.com`, sender name `Lineup Card`
+   - Sender email `noreply@send.lineupcardcoach.com`, sender name `Lineup Card`
+
+   The sender must sit on the domain Resend verified, which is the `send`
+   subdomain. Sending as `noreply@lineupcardcoach.com` is refused, and Supabase
+   reports it only as "Error sending magic link email".
 7. Open **Authentication > Rate Limits** and raise the emails-per-hour limit.
    The low default exists because of the built-in sender.
 8. Send yourself a sign-in link and confirm it arrives from your own address.
