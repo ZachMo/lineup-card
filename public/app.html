@@ -199,7 +199,20 @@
   .prow span { flex: 1 1 auto; }
   .prow input { width: 5.5em; font: inherit; font-size: 16px; padding: 7px 9px; border-radius: 8px;
     border: 1px solid var(--border); background: var(--plane); color: var(--ink); }
-  .season-games { display: grid; gap: 4px; margin-top: 10px; font-size: .85rem; color: var(--ink-2); }
+  /* Where each player has actually spent the season. The colours carry the
+     shape, the percentages carry the fact, so neither has to be trusted alone. */
+  .share-key { display: flex; flex-wrap: wrap; gap: 14px; font-size: .78rem; color: var(--muted); margin-bottom: 12px; }
+  .share-key i { display: inline-block; width: 10px; height: 10px; border-radius: 3px; margin-right: 5px; vertical-align: -1px; }
+  .sw.if, .share span.if { background: var(--accent); }
+  .sw.of, .share span.of { background: #4a8fd4; }
+  .sw.bn, .share span.bn { background: var(--muted); }
+  .shares { display: grid; gap: 15px; }
+  .sh-top { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; font-size: .92rem; }
+  .sh-top span { color: var(--muted); font-size: .78rem; white-space: nowrap; }
+  .share { display: flex; height: 14px; border-radius: 999px; overflow: hidden; background: var(--line); margin: 6px 0 5px; }
+  .share span { display: block; height: 100%; }
+  .sh-num { font-size: .78rem; color: var(--ink-2); }
+  .season-games { display: grid; gap: 4px; margin-top: 16px; font-size: .85rem; color: var(--ink-2); border-top: 1px solid var(--line); padding-top: 12px; }
   .season-games .g { display: flex; align-items: center; gap: 10px; }
   .season-games .g span { flex: 1 1 auto; }
   .players-view { margin-top: 18px; }
@@ -1631,16 +1644,31 @@ function renderSeason() {
   const cols = fieldPositions().filter(k => k === 'P' || k === 'C');
   $('season-sum').textContent = `${s.season.length} ${s.season.length === 1 ? 'game' : 'games'}`;
   const showPitches = s.pitch.counts;
-  let h = `<div class="scroll"><table class="bp"><thead><tr><th class="nm">Player</th><th>Games</th><th>Played</th><th>Infield</th><th>Bench</th>`;
-  h += cols.map(k => `<th>${esc(k)}</th>`).join('') + (showPitches ? '<th>Pitches</th>' : '') + '</tr></thead><tbody>';
+  let h = `<div class="share-key">
+    <span><i class="sw if"></i>Infield</span>
+    <span><i class="sw of"></i>Outfield</span>
+    <span><i class="sw bn"></i>Bench</span>
+  </div><div class="shares">`;
   for (const id of order) {
     const t = totals.get(id);
-    h += `<tr><td class="nm">${esc(t.name)}</td><td>${t.games}</td><td class="if">${t.field}</td><td>${t.inf}</td><td class="sit">${t.bench}</td>`;
-    h += cols.map(k => `<td>${t.pos[k] || 0}</td>`).join('');
-    h += showPitches ? `<td>${t.pitches || 0}</td>` : '';
-    h += '</tr>';
+    const innings = t.field + t.bench;
+    // Two are rounded and the third takes the remainder, so they always make 100.
+    const infPct = innings ? Math.round(t.inf / innings * 100) : 0;
+    const benchPct = innings ? Math.round(t.bench / innings * 100) : 0;
+    const ofPct = Math.max(0, 100 - infPct - benchPct);
+    const spots = cols.map(k => `${t.pos[k] || 0} ${esc(k)}`).join(' · ');
+    h += `<div class="sh">
+      <div class="sh-top"><b>${esc(t.name)}</b><span>${t.games} ${t.games === 1 ? 'game' : 'games'} &middot; ${innings} innings</span></div>
+      <div class="share" role="img" aria-label="${infPct} percent infield, ${ofPct} percent outfield, ${benchPct} percent on the bench">
+        <span class="if" style="width:${infPct}%"></span>
+        <span class="of" style="width:${ofPct}%"></span>
+        <span class="bn" style="width:${benchPct}%"></span>
+      </div>
+      <div class="sh-num">${infPct}% infield &middot; ${ofPct}% outfield &middot; ${benchPct}% bench${
+        spots ? ' &middot; ' + spots : ''}${showPitches && t.pitches ? ' &middot; ' + t.pitches + ' pitches' : ''}</div>
+    </div>`;
   }
-  h += '</tbody></table></div>';
+  h += '</div>';
   h += `<div class="season-games">${s.season.map(g => `
     <div class="g"><span>${esc(g.date)}${g.opponent ? ' &middot; vs. ' + esc(g.opponent) : ''} &middot; ${g.innings} innings</span>
     ${showPitches ? `<button type="button" class="cap-add" data-counts="${g.id}">Counts</button>` : ''}
