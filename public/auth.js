@@ -309,6 +309,7 @@
     if (Array.isArray(set.positions) && set.positions.length) s.positions = set.positions;
     s.posCaps = set.posCaps && typeof set.posCaps === 'object' ? set.posCaps : {};
     s.season = Array.isArray(set.season) ? set.season : [];
+    if (set.pitch && typeof set.pitch === 'object') s.pitch = set.pitch;
     s.grid = Array.isArray(game.grid) ? game.grid : [];
     s.opponent = game.opponent || '';
     s.date = game.date || '';
@@ -323,7 +324,7 @@
       settings: {
         innings: s.innings, early: s.early, outfield: s.outfield, minPlay: s.minPlay,
         pcInfield: s.pcInfield, printPlayers: s.printPlayers,
-        positions: s.positions, posCaps: s.posCaps, season: s.season,
+        positions: s.positions, posCaps: s.posCaps, season: s.season, pitch: s.pitch,
       },
       lineup: { grid: s.grid, opponent: s.opponent, date: s.date },
       updated_at: new Date().toISOString(),

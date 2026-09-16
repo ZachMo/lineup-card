@@ -429,6 +429,28 @@
       <div class="field">Innings limits
         <div id="cap-edit" class="row" style="gap:6px"></div>
       </div>
+      <details class="fold" id="pitch-fold">
+        <summary>Pitching rules<span class="fold-sum" id="pitch-sum"></span></summary>
+        <div class="body">
+          <div class="two">
+            <label class="field">Most innings a week
+              <select class="plain" id="pi-week"></select>
+            </label>
+            <label class="field">Catching blocks pitching after
+              <select class="plain" id="pi-catch"></select>
+            </label>
+          </div>
+          <div class="two">
+            <label class="field">Rest after pitching
+              <select class="plain" id="pi-rest-inn"></select>
+            </label>
+            <label class="field">Rest for
+              <select class="plain" id="pi-rest-days"></select>
+            </label>
+          </div>
+          <p class="hint" style="margin:0">Weekly innings and rest days count the games you have saved to the season.</p>
+        </div>
+      </details>
       <label class="check"><input type="checkbox" id="pc">
         <span>Pitcher and catcher count as infield</span></label>
       <label class="check"><input type="checkbox" id="print-players">
@@ -528,6 +550,14 @@ function solveLineup(o) {
   const capList = Object.entries(o.posCaps || {})
     .map(([k, v]) => [slots.indexOf(k), v | 0])
     .filter(([i]) => i >= 0);
+  // Caps worked out for one player from the season so far, such as the innings
+  // they have left to pitch this week.
+  const ownCaps = players.map(p => ((o.playerCaps || {})[p.id] || [])
+    .map(([k, v]) => [slots.indexOf(k), v | 0]).filter(([i]) => i >= 0));
+  // One spot can shut another: catching enough innings ends a pitching day.
+  const pair = o.pairRule && slots.indexOf(o.pairRule.blocks) >= 0 && slots.indexOf(o.pairRule.after) >= 0
+    ? { blocks: slots.indexOf(o.pairRule.blocks), after: slots.indexOf(o.pairRule.after), count: o.pairRule.count }
+    : null;
   const windowLen = okIn.map(row => row.reduce((t, ok) => t + (ok ? 1 : 0), 0));
   const okEarly = okIn.map(row => row.slice(0, early).some(Boolean));
   const index = new Map(players.map((p, i) => [p.id, i]));
@@ -587,6 +617,15 @@ function solveLineup(o) {
       for (const [sI, max] of capList) {
         const over = posCnt[p * S + sI] - max;
         if (over > 0) c += OVER_CAP * over;
+      }
+    }
+    for (let p = 0; p < n; p++) {
+      for (const [sI, max] of ownCaps[p]) {
+        const over = posCnt[p * S + sI] - max;
+        if (over > 0) c += OVER_CAP * over;
+      }
+      if (pair && posCnt[p * S + pair.after] >= pair.count && posCnt[p * S + pair.blocks] > 0) {
+        c += OVER_CAP;
       }
     }
     let lo = 1e9, hi = -1;
@@ -676,6 +715,8 @@ const DEFAULTS = {
   team: '', opponent: '', date: '', innings: 6, early: 4, outfield: 4,
   positions: [], posCaps: {}, minPlay: 0, pcInfield: true, printPlayers: true, players: [], grid: [],
   season: [],
+  // All off until a coach turns them on.
+  pitch: { maxWeek: 0, restInnings: 0, restDays: 0, catchBlocks: 0 },
 };
 let s = load();
 let undoStack = [];
@@ -749,6 +790,13 @@ function normalize() {
   for (const p of s.players) delete p.caps; // from an earlier build
   if (!Array.isArray(s.season)) s.season = [];
   if (s.season.length > 60) s.season.length = 60; // a season, not a career
+  const pr = s.pitch && typeof s.pitch === 'object' ? s.pitch : {};
+  s.pitch = {
+    maxWeek: Math.max(0, Math.min(30, pr.maxWeek | 0)),
+    restInnings: Math.max(0, Math.min(9, pr.restInnings | 0)),
+    restDays: Math.max(0, Math.min(7, pr.restDays | 0)),
+    catchBlocks: Math.max(0, Math.min(9, pr.catchBlocks | 0)),
+  };
   for (const p of s.players) {
     p.from = Math.max(1, Math.min(s.innings, p.from || 1));
     p.to = p.to ? Math.max(p.from, Math.min(s.innings, p.to)) : 0;
@@ -1109,6 +1157,7 @@ function renderSettings() {
       .map(n => `<option value="${n}" ${n === s.minPlay ? 'selected' : ''}>${n === 1 ? '1 inning' : n + ' innings'}</option>`).join('');
   renderPositions();
   renderPosCaps();
+  renderPitchRules();
   $('pc').checked = s.pcInfield;
   $('print-players').checked = s.printPlayers;
   // The folded panel still says what it holds.
@@ -1124,6 +1173,77 @@ $('date').addEventListener('input', e => { s.date = e.target.value; save(); rend
 $('innings').addEventListener('change', e => { s.innings = +e.target.value; changed(); });
 $('early').addEventListener('change', e => { s.early = +e.target.value; changed(); });
 $('minplay').addEventListener('change', e => { s.minPlay = +e.target.value; changed(); });
+// Pitching rules only matter to a league that has a pitcher.
+function renderPitchRules() {
+  const fold = $('pitch-fold'), hasP = fieldPositions().includes('P');
+  fold.hidden = !hasP;
+  if (!hasP) return;
+  const opts = (id, max, none, unit) => {
+    $(id).innerHTML = [`<option value="0">${none}</option>`]
+      .concat(Array.from({ length: max }, (_, i) => i + 1)
+        .map(n => `<option value="${n}">${n} ${unit}${n === 1 ? '' : 's'}</option>`)).join('');
+  };
+  opts('pi-week', 12, 'No weekly limit', 'inning');
+  opts('pi-catch', 6, 'Never blocks', 'inning');
+  opts('pi-rest-inn', 9, 'No rest rule', 'inning');
+  opts('pi-rest-days', 7, 'No rest', 'day');
+  $('pi-week').value = s.pitch.maxWeek;
+  $('pi-catch').value = s.pitch.catchBlocks;
+  $('pi-rest-inn').value = s.pitch.restInnings;
+  $('pi-rest-days').value = s.pitch.restDays;
+  const on = [];
+  if (s.pitch.maxWeek) on.push(`${s.pitch.maxWeek} a week`);
+  if (s.pitch.restInnings && s.pitch.restDays) on.push(`${s.pitch.restDays} days rest after ${s.pitch.restInnings}`);
+  if (s.pitch.catchBlocks) on.push(`no pitching after ${s.pitch.catchBlocks} catching`);
+  $('pitch-sum').textContent = on.length ? on.join(' · ') : 'off';
+}
+['pi-week', 'pi-catch', 'pi-rest-inn', 'pi-rest-days'].forEach(id => {
+  $(id).addEventListener('change', e => {
+    const key = { 'pi-week': 'maxWeek', 'pi-catch': 'catchBlocks', 'pi-rest-inn': 'restInnings', 'pi-rest-days': 'restDays' }[id];
+    s.pitch[key] = +e.target.value;
+    changed();
+  });
+});
+
+// How many innings each player may pitch today, given the season so far.
+// Returns { pid: { allowed, reason } } and only for players who are limited.
+function pitchLimits() {
+  const limits = {};
+  if (!fieldPositions().includes('P')) return limits;
+  const day = 86400000;
+  const when = d => new Date(d + 'T12:00:00').getTime();
+  const today = when(s.date || new Date().toISOString().slice(0, 10));
+  const innAt = (g, pid) => ((g.stats || {})[pid] || {}).pos ? (g.stats[pid].pos.P || 0) : 0;
+  for (const p of here()) {
+    let allowed = Infinity, reason = '';
+    if (s.pitch.restInnings && s.pitch.restDays) {
+      for (const g of s.season) {
+        const n = innAt(g, p.id);
+        if (n < s.pitch.restInnings) continue;
+        const gap = (today - when(g.date)) / day;
+        if (gap >= 0 && gap < s.pitch.restDays) {
+          allowed = 0;
+          reason = `pitched ${n} ${n === 1 ? 'inning' : 'innings'} on ${g.date}, resting ${s.pitch.restDays} days`;
+        }
+      }
+    }
+    if (s.pitch.maxWeek) {
+      let week = 0;
+      for (const g of s.season) {
+        const gap = (today - when(g.date)) / day;
+        if (gap >= 0 && gap < 7) week += innAt(g, p.id);
+      }
+      const left = Math.max(0, s.pitch.maxWeek - week);
+      if (left < allowed) {
+        allowed = left;
+        if (!left) reason = `has pitched ${week} of ${s.pitch.maxWeek} innings this week`;
+      }
+    }
+    if (allowed !== Infinity) limits[p.id] = { allowed, reason };
+  }
+  return limits;
+}
+
 // "Nobody catches more than two innings." A rule about the spot, applying to
 // every player on the team.
 function renderPosCaps() {
@@ -1502,6 +1622,27 @@ function checkLineup() {
     }
   }
   notes.push(...twice);
+  // Pitching rules, with the reason attached so a coach knows where it came from.
+  const limits = pitchLimits();
+  for (const p of players) {
+    const lim = limits[p.id];
+    if (!lim) continue;
+    const at = where.filter(w => w[p.id] === 'P').length;
+    if (at > lim.allowed) {
+      notes.push(lim.allowed === 0
+        ? `${shortName(p)} is pitching, but ${shortName(p)} ${lim.reason}.`
+        : `${shortName(p)} pitches ${at} innings, but has ${lim.allowed} left this week.`);
+    }
+  }
+  if (s.pitch.catchBlocks) {
+    for (const p of players) {
+      const caught = where.filter(w => w[p.id] === 'C').length;
+      const pitched = where.filter(w => w[p.id] === 'P').length;
+      if (caught >= s.pitch.catchBlocks && pitched > 0) {
+        notes.push(`${shortName(p)} catches ${caught} innings and pitches ${pitched}. Catching ${s.pitch.catchBlocks} ends a pitching day.`);
+      }
+    }
+  }
   for (const [k, max] of Object.entries(s.posCaps || {})) {
     for (const p of players) {
       const at = where.filter(w => w[p.id] === k).length;
@@ -1600,6 +1741,8 @@ $('build').addEventListener('click', () => {
   });
   const r = solveLineup({
     slots: ks, kinds: slotKinds(ks), ruleIF: ks.map(k => countsAsInfield(k, s.pcInfield)), posCaps: s.posCaps,
+    playerCaps: Object.fromEntries(Object.entries(pitchLimits()).map(([pid, v]) => [pid, [['P', v.allowed]]])),
+    pairRule: s.pitch.catchBlocks ? { after: 'C', blocks: 'P', count: s.pitch.catchBlocks } : null,
     innings: s.innings, early: early(), pcInfield: s.pcInfield, minPlay: s.minPlay, players, fixed,
   });
   s.grid = r.assign.map((row, i) => {
