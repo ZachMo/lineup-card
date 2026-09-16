@@ -121,10 +121,11 @@
   function panelHTML() {
     if (mode === 'recover') {
       return `<form class="acct-panel" id="acct-form" data-mode="recover">
-        <h3>Pick a new password</h3>
+        <h3>${user ? 'Set a password' : 'Pick a new password'}</h3>
         <input type="password" id="acct-pass" placeholder="New password" autocomplete="new-password" minlength="8" required>
         <div class="go"><button type="submit" class="primary">Save password</button></div>
         ${noteHTML()}
+        ${user ? '<div class="acct-links"><button type="button" data-go="closed">Cancel</button></div>' : ''}
       </form>`;
     }
     if (mode === 'link') {
@@ -164,6 +165,7 @@
       ${teamId ? '<button id="acct-new">Save as new</button>' : ''}
       ${noteHTML()}
       <span class="acct-user">${esc(user.email || 'Signed in')}</span>
+      <button id="acct-pass-set">Set a password</button>
       <button id="acct-out">Sign out</button>
     </div>`;
   }
@@ -200,6 +202,8 @@
     if (go) { mode = go.dataset.go; note = ''; return render(); }
     const id = e.target.id;
     if (id === 'acct-open') { mode = 'password'; note = ''; return render(); }
+    // Signed in by link, and would rather have a password next time.
+    if (id === 'acct-pass-set') { mode = 'recover'; note = ''; return render(); }
     if (id === 'acct-new-user') return signUp();
     if (id === 'acct-forgot') return forgot();
     if (id === 'acct-save') return saveNow();
@@ -250,6 +254,11 @@
     });
     busy = false;
     if (error) return setNote(plain(error), true);
+    // Supabase will not say whether an address is taken, so an existing account
+    // comes back as success with no identities and no email sent. Saying "check
+    // your email" there sends a coach to an empty inbox.
+    const known = data.user && Array.isArray(data.user.identities) && !data.user.identities.length;
+    if (known) return setNote('That email already has an account. Use Forgot password to set one.', true);
     if (!data.session) setNote('Check your email to confirm the account, then sign in.', true);
   }
 
