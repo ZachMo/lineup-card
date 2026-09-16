@@ -49,7 +49,7 @@ The second one lets you test on your own machine.
 1. Go to <https://dash.cloudflare.com> and sign up.
 2. **Workers & Pages > Create > Pages > Connect to Git**.
 3. Pick the `lineup-card` repo.
-4. Framework preset: **None**. Build command: leave empty. Output directory: `/`.
+4. Framework preset: **None**. Build command: leave empty. Output directory: `public`.
 5. Press **Save and Deploy**. You get a `lineup-card.pages.dev` address.
 
 A custom domain comes later: buy the name, then **Custom domains > Set up a domain**.
