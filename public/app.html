@@ -247,6 +247,12 @@
   .player .tag { font-size: .68rem; font-weight: 800; padding: 3px 8px; border-radius: 999px; background: var(--warn-wash); color: var(--warn); }
   .prefs .chips { display: flex; flex-wrap: wrap; gap: 6px; }
   .prefs .sub2 { font-size: .74rem; font-weight: 700; color: var(--muted); }
+  .prefs label.tiny { display: grid; gap: 3px; font-size: .72rem; font-weight: 700; color: var(--muted); }
+  .prefs label.tiny select {
+    font: inherit; font-size: .85rem; font-weight: 500; color: var(--ink);
+    background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 5px 8px;
+  }
+  .player .tag.part { background: var(--accent-wash); color: var(--accent); }
 
   /* Phone: one inning at a time. The grid stays for desktop and for print. */
   #inning-view { display: none; }
@@ -385,6 +391,9 @@
           <select class="plain" id="early"></select>
         </label>
       </div>
+      <label class="field">Everyone plays at least
+        <select class="plain" id="minplay"></select>
+      </label>
       <div class="field">Outfielders
         <div class="seg" role="group" aria-label="Outfielders">
           <button type="button" data-of="3">3</button>
@@ -466,8 +475,11 @@ function solveLineup(o) {
   const n = players.length, S = slots.length;
   const HARD = 1e6, RULE = 1e5, SIT_TWICE = 2e4, SIT_SPREAD = 2e4,
         SIT_SQ = 500, IF_SQ = 40, REPEAT = 60, OF_ROW = 8,
+        // Leagues that set a floor on playing time mean it, so this sits high.
+        MIN_PLAY = 5e4, EMPTY_IF = 3e4,
         // A coach's wishes, weighed under every fairness rule above them.
         AVOID = 900, PREFER = 150;
+  const minPlay = Math.min(o.minPlay || 0, innings);
 
   const bench = slots.map(isBenchKey);
   const inf = slots.map(k => !!POS[k] && POS[k].kind === 'IF');
@@ -477,6 +489,16 @@ function solveLineup(o) {
   const noP = players.map(p => !!p.noP), noC = players.map(p => !!p.noC), noB = players.map(p => !!p.noB);
   const slotSet = keys => new Set((keys || []).map(k => slots.indexOf(k)).filter(i => i >= 0));
   const wants = players.map(p => slotSet(p.pref)), shuns = players.map(p => slotSet(p.avoid));
+  // Who is at the game in each inning, and how many field spots that leaves open.
+  const okIn = players.map(p => Array.from({ length: innings },
+    (_, i) => i + 1 >= (p.from || 1) && (!p.to || i + 1 <= p.to)));
+  const fieldCount = slots.filter(k => !isBenchKey(k)).length;
+  const spare = Array.from({ length: innings }, (_, i) =>
+    Math.max(0, fieldCount - players.reduce((t, _p, pi) => t + (okIn[pi][i] ? 1 : 0), 0)));
+  // Nobody is asked for what their time at the game cannot give: a player who
+  // arrives in the 5th cannot have an infield inning in the first four.
+  const windowLen = okIn.map(row => row.reduce((t, ok) => t + (ok ? 1 : 0), 0));
+  const okEarly = okIn.map(row => row.slice(0, early).some(Boolean));
   const index = new Map(players.map((p, i) => [p.id, i]));
 
   const A = [], free = [];
@@ -489,7 +511,7 @@ function solveLineup(o) {
     const open = [];
     for (let s = 0; s < S; s++) if (row[s] === -2) open.push(s);
     const pool = [];
-    for (let p = 0; p < n; p++) if (!used.has(p)) pool.push(p);
+    for (let p = 0; p < n; p++) if (!used.has(p) && okIn[p][i]) pool.push(p);
     while (pool.length < open.length) pool.push(-1);
     shuffle(pool);
     open.forEach((s, j) => { row[s] = pool[j]; });
@@ -497,15 +519,19 @@ function solveLineup(o) {
   }
 
   const sat = new Int16Array(n), ifc = new Int16Array(n), gotIF = new Uint8Array(n),
-        lastSat = new Int16Array(n), lastOF = new Int16Array(n), posCnt = new Int16Array(n * S);
+        lastSat = new Int16Array(n), lastOF = new Int16Array(n), posCnt = new Int16Array(n * S),
+        gaps = new Int16Array(innings), fld = new Int16Array(n);
   function cost() {
-    sat.fill(0); ifc.fill(0); gotIF.fill(0); lastSat.fill(-9); lastOF.fill(-9); posCnt.fill(0);
+    sat.fill(0); ifc.fill(0); gotIF.fill(0); lastSat.fill(-9); lastOF.fill(-9); posCnt.fill(0); gaps.fill(0); fld.fill(0);
     let c = 0;
     for (let i = 0; i < innings; i++) {
       const row = A[i];
       for (let s = 0; s < S; s++) {
         const p = row[s];
-        if (p < 0) { if (!out[s]) c += HARD; continue; }
+        // An empty spot is fine on the bench, and on the field only while the
+        // team is short. Leave the outfield open first.
+        if (p < 0) { if (!bench[s]) { gaps[i]++; if (inf[s]) c += EMPTY_IF; } continue; }
+        if (!okIn[p][i]) c += HARD; // not at the game this inning
         if (bench[s]) {
           sat[p]++;
           if (noB[p]) c += HARD;
@@ -516,6 +542,7 @@ function solveLineup(o) {
         if ((s === pIdx && noP[p]) || (s === cIdx && noC[p])) c += HARD;
         if (shuns[p].has(s)) c += AVOID;
         else if (wants[p].has(s)) c -= PREFER;
+        fld[p]++;
         if (inf[s]) ifc[p]++;
         else { if (lastOF[p] === i - 1) c += OF_ROW; lastOF[p] = i; }
         if (rule[s] && i < early) gotIF[p] = 1;
@@ -523,9 +550,13 @@ function solveLineup(o) {
         if (++posCnt[k] > 1) c += REPEAT * (posCnt[k] - 1);
       }
     }
+    // A field spot may stay empty only while the team is short that inning.
+    for (let i = 0; i < innings; i++) if (gaps[i] > spare[i]) c += HARD * (gaps[i] - spare[i]);
     let lo = 1e9, hi = -1;
     for (let p = 0; p < n; p++) {
-      if (early > 0 && !gotIF[p]) c += RULE;
+      if (early > 0 && !gotIF[p] && okEarly[p]) c += RULE;
+      const goal = Math.min(minPlay, windowLen[p]);
+      if (goal > 0 && fld[p] < goal) c += MIN_PLAY * (goal - fld[p]);
       c += sat[p] * sat[p] * SIT_SQ + ifc[p] * ifc[p] * IF_SQ;
       if (noB[p]) continue; // Even bench time counts only players who can sit.
       if (sat[p] < lo) lo = sat[p];
@@ -581,7 +612,7 @@ function shuffle(a) {
 const KEY = 'lineup-card-v1';
 const DEFAULTS = {
   team: '', opponent: '', date: '', innings: 6, early: 4, outfield: 4,
-  pcInfield: true, printPlayers: true, players: [], grid: [],
+  minPlay: 0, pcInfield: true, printPlayers: true, players: [], grid: [],
 };
 let s = load();
 let undoStack = [];
@@ -601,6 +632,24 @@ const $ = id => document.getElementById(id);
 const esc = t => String(t).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const uid = () => Math.random().toString(36).slice(2, 10);
 const here = () => s.players.filter(p => p.here !== false);
+// Kids arrive late and leave early. `to: 0` means they stay to the last inning.
+const playsIn = (p, i) => i + 1 >= (p.from || 1) && (!p.to || i + 1 <= p.to);
+const partTime = p => (p.from || 1) > 1 || (p.to && p.to < s.innings);
+function windowText(p) {
+  const from = p.from || 1, to = p.to || 0;
+  if (from > 1 && to) return `${from}–${to}`;
+  if (from > 1) return `from ${from}`;
+  if (to) return `thru ${to}`;
+  return '';
+}
+// The same window, said in a sentence.
+function windowSaid(p) {
+  const from = p.from || 1, to = p.to || 0;
+  if (from > 1 && to) return `only here for innings ${from} to ${to}`;
+  if (from > 1) return `not here until inning ${from}`;
+  if (to) return `gone after inning ${to}`;
+  return 'here all game';
+}
 const slots = () => slotsFor(s.outfield, here().length);
 const early = () => Math.min(s.early, s.innings);
 const byId = id => s.players.find(p => p.id === id);
@@ -612,6 +661,12 @@ function posName(k) { return isBenchKey(k) ? 'Bench' : POS[k].name; }
 function normalize() {
   s.innings = Math.max(1, Math.min(9, s.innings | 0));
   s.early = Math.max(0, Math.min(9, s.early | 0)); // 0 means the league has no infield rule.
+  s.minPlay = Math.max(0, Math.min(s.innings, s.minPlay | 0)); // 0 means no minimum.
+  for (const p of s.players) {
+    p.from = Math.max(1, Math.min(s.innings, p.from || 1));
+    p.to = p.to ? Math.max(p.from, Math.min(s.innings, p.to)) : 0;
+    if (p.to === s.innings) p.to = 0; // "through the last inning" is just all game.
+  }
   const ks = slots(), ids = new Set(here().map(p => p.id));
   const grid = [];
   for (let i = 0; i < s.innings; i++) {
@@ -648,7 +703,7 @@ function parseLine(line) {
   return { num: '', name: clean(t) };
 }
 const clean = t => t.replace(/[|~]/g, '').trim();
-const newPlayer = (num = '', name = '') => ({ id: uid(), num, name, here: true, noP: false, noC: false, noB: false, pref: [], avoid: [] });
+const newPlayer = (num = '', name = '') => ({ id: uid(), num, name, here: true, noP: false, noC: false, noB: false, pref: [], avoid: [], from: 1, to: 0 });
 
 const GRIP = '<svg width="10" height="16" viewBox="0 0 10 16" aria-hidden="true" fill="currentColor"><circle cx="2" cy="2" r="1.5"/><circle cx="8" cy="2" r="1.5"/><circle cx="2" cy="8" r="1.5"/><circle cx="8" cy="8" r="1.5"/><circle cx="2" cy="14" r="1.5"/><circle cx="8" cy="14" r="1.5"/></svg>';
 
@@ -669,6 +724,17 @@ function prefsHTML(p) {
       <label class="chip" title="Can pitch"><input type="checkbox" data-f="canP" ${!p.noP ? 'checked' : ''}><span>Can pitch</span></label>
       <label class="chip" title="Can catch"><input type="checkbox" data-f="canC" ${!p.noC ? 'checked' : ''}><span>Can catch</span></label>
       <label class="chip" title="Can sit on the bench"><input type="checkbox" data-f="canB" ${!p.noB ? 'checked' : ''}><span>Can sit</span></label>
+    </div>
+    <div class="sub2">Here for</div>
+    <div class="row2">
+      <label class="tiny">From inning
+        <select data-f="from">${Array.from({ length: s.innings }, (_, i) => i + 1)
+          .map(n => `<option value="${n}" ${(p.from || 1) === n ? 'selected' : ''}>${n}</option>`).join('')}</select>
+      </label>
+      <label class="tiny">Through inning
+        <select data-f="to"><option value="0" ${!p.to ? 'selected' : ''}>End</option>${Array.from({ length: s.innings }, (_, i) => i + 1)
+          .map(n => `<option value="${n}" ${p.to === n ? 'selected' : ''}>${n}</option>`).join('')}</select>
+      </label>
     </div>
     <div class="sub2">Positions</div>
     <div class="row2">${btns}</div>
@@ -693,7 +759,7 @@ function renderRoster() {
       <input type="text" class="num" data-f="num" value="${esc(p.num)}" placeholder="#" inputmode="numeric" aria-label="Jersey number">
       <input type="text" class="name" data-f="name" value="${esc(p.name)}" placeholder="Name" aria-label="Name">
       <span class="tail">
-        ${p.here === false ? '<span class="tag">Out</span>' : ''}
+        ${p.here === false ? '<span class="tag">Out</span>' : partTime(p) ? `<span class="tag part">${windowText(p)}</span>` : ''}
         <button type="button" class="opts" data-act="prefs" aria-expanded="${openPrefs === p.id}">Options</button>
         <button type="button" class="icon" data-act="remove" aria-label="Remove ${esc(shortName(p))}">&times;</button>
       </span>
@@ -711,8 +777,13 @@ $('roster').addEventListener('input', e => {
 });
 $('roster').addEventListener('change', e => {
   const li = e.target.closest('.player'), f = e.target.dataset.f;
-  if (!li || e.target.type !== 'checkbox') return;
+  if (!li || !f) return;
   const p = byId(li.dataset.id);
+  if (f === 'from' || f === 'to') {
+    p[f] = +e.target.value;
+    return changed(true);
+  }
+  if (e.target.type !== 'checkbox') return;
   if (f === 'here') p.here = e.target.checked;
   if (f === 'canP') p.noP = !e.target.checked;
   if (f === 'canC') p.noC = !e.target.checked;
@@ -855,9 +926,12 @@ function teamLink() {
   q.set('players', s.players.map(p => `${p.num} ${p.name}`.trim()
     + (p.noP ? '~noP' : '') + (p.noC ? '~noC' : '') + (p.noB ? '~noB' : '')
     + ((p.pref || []).length ? '~pref:' + p.pref.join('.') : '')
-    + ((p.avoid || []).length ? '~avoid:' + p.avoid.join('.') : '')).join('|'));
+    + ((p.avoid || []).length ? '~avoid:' + p.avoid.join('.') : '')
+    + ((p.from || 1) > 1 ? '~from:' + p.from : '')
+    + (p.to ? '~to:' + p.to : '')).join('|'));
   q.set('of', s.outfield);
   q.set('inn', s.innings);
+  if (s.minPlay) q.set('min', s.minPlay);
   return location.origin + location.pathname + '#' + q.toString();
 }
 function readLink() {
@@ -878,9 +952,16 @@ function readLink() {
     };
     p.pref = spots('pref');
     p.avoid = spots('avoid');
+    const num = tag => {
+      const found = flags.find(f => f.startsWith(tag + ':'));
+      return found ? Math.max(0, parseInt(found.slice(tag.length + 1), 10) || 0) : 0;
+    };
+    p.from = num('from') || 1;
+    p.to = num('to');
     return p;
   }).filter(Boolean);
-  return { team: q.get('team') || '', players, outfield: q.get('of') === '3' ? 3 : 4, innings: +q.get('inn') || null };
+  return { team: q.get('team') || '', players, outfield: q.get('of') === '3' ? 3 : 4,
+    innings: +q.get('inn') || null, minPlay: +q.get('min') || 0 };
 }
 function applyLink() {
   const link = readLink();
@@ -893,6 +974,7 @@ function applyLink() {
   s.players = link.players;
   s.outfield = link.outfield;
   if (link.innings) s.innings = link.innings;
+  if (link.minPlay) s.minPlay = link.minPlay;
   s.grid = [];
 }
 $('share').addEventListener('click', async () => {
@@ -918,12 +1000,16 @@ function renderSettings() {
   $('early').innerHTML = `<option value="0" ${early() === 0 ? 'selected' : ''}>No rule</option>` +
     Array.from({ length: s.innings }, (_, i) => i + 1)
       .map(n => `<option value="${n}" ${n === early() ? 'selected' : ''}>${n === 1 ? 'Inning 1' : 'Innings 1–' + n}</option>`).join('');
+  $('minplay').innerHTML = `<option value="0" ${!s.minPlay ? 'selected' : ''}>No minimum</option>` +
+    Array.from({ length: s.innings }, (_, i) => i + 1)
+      .map(n => `<option value="${n}" ${n === s.minPlay ? 'selected' : ''}>${n === 1 ? '1 inning' : n + ' innings'}</option>`).join('');
   document.querySelectorAll('[data-of]').forEach(b => b.setAttribute('aria-pressed', +b.dataset.of === s.outfield));
   $('pc').checked = s.pcInfield;
   $('print-players').checked = s.printPlayers;
   // The folded panel still says what it holds.
   const bits = [`${s.innings} innings`, `${s.outfield} outfielders`,
     early() ? `infield by inning ${early()}` : 'no infield rule'];
+  if (s.minPlay) bits.push(`everyone plays ${s.minPlay}+`);
   if (s.opponent) bits.unshift('vs. ' + s.opponent);
   $('game-sum').textContent = bits.join(' · ');
 }
@@ -932,6 +1018,7 @@ $('opp').addEventListener('input', e => { s.opponent = e.target.value; save(); r
 $('date').addEventListener('input', e => { s.date = e.target.value; save(); renderHead(); });
 $('innings').addEventListener('change', e => { s.innings = +e.target.value; changed(); });
 $('early').addEventListener('change', e => { s.early = +e.target.value; changed(); });
+$('minplay').addEventListener('change', e => { s.minPlay = +e.target.value; changed(); });
 document.querySelectorAll('[data-of]').forEach(b => b.addEventListener('click', () => { s.outfield = +b.dataset.of; changed(); }));
 $('pc').addEventListener('change', e => { s.pcInfield = e.target.checked; changed(); });
 $('print-players').addEventListener('change', e => { s.printPlayers = e.target.checked; changed(); });
@@ -1084,6 +1171,18 @@ function checkLineup() {
   s.players.forEach((p, i) => {
     if (p.here !== false && !p.name && !p.num) notes.push(`Player ${i + 1} on the team list has no name or number.`);
   });
+  // Late arrivals and early exits can leave one inning short without the whole
+  // roster being short.
+  if (players.some(partTime)) {
+    for (let i = 0; i < inn; i++) {
+      const n = players.filter(p => playsIn(p, i)).length;
+      // A roster that is short all game gets its own note below, so only report
+      // an inning left short by who is coming and going.
+      if (n < fieldCount && players.length >= fieldCount) {
+        notes.push(`Inning ${i + 1} has ${n} players at the game for ${fieldCount} spots.`);
+      }
+    }
+  }
   // One note covers the open outfield spots a short roster leaves, instead of one per inning.
   if (players.length < fieldCount) {
     const open = fieldCount - players.length;
@@ -1097,7 +1196,8 @@ function checkLineup() {
       if (row[k] || isBenchKey(k)) continue;
       if (POS[k].kind === 'IF' || players.length >= fieldCount) notes.push(`Inning ${i + 1} has no ${POS[k].name.toLowerCase()}.`);
     }
-    const missing = players.filter(p => !where[i][p.id]);
+    // Someone who has not arrived yet, or has gone home, is not "left out".
+    const missing = players.filter(p => playsIn(p, i) && !where[i][p.id]);
     if (missing.length) notes.push(`Inning ${i + 1} leaves out ${list(missing.map(shortName))}.`);
     for (const p of players) {
       const k = where[i][p.id];
@@ -1105,12 +1205,14 @@ function checkLineup() {
       if (k === 'C' && p.noC) notes.push(`${shortName(p)} catches in inning ${i + 1}, but C is off for ${shortName(p)}.`);
       if (k && isBenchKey(k) && p.noB) notes.push(`${shortName(p)} sits in inning ${i + 1}, but Bench is off for ${shortName(p)}.`);
       if (k && !isBenchKey(k) && (p.avoid || []).includes(k)) notes.push(`${shortName(p)} is at ${POS[k].name.toLowerCase()} in inning ${i + 1}, a position ${shortName(p)} avoids.`);
+      if (k && !playsIn(p, i)) notes.push(`${shortName(p)} is in the lineup for inning ${i + 1}, but is ${windowSaid(p)}.`);
     }
   }
-  const noIF = [], twice = [], sat = {};
+  const noIF = [], twice = [], sat = {}, onField = {};
   for (const p of players) {
     let got = false, last = -9;
     sat[p.id] = 0;
+    onField[p.id] = 0;
     for (let i = 0; i < inn; i++) {
       const k = where[i][p.id];
       if (!k) continue;
@@ -1118,15 +1220,50 @@ function checkLineup() {
         sat[p.id]++;
         if (last === i - 1) twice.push(`${shortName(p)} sits innings ${i} and ${i + 1}.`);
         last = i;
-      } else if (i < e && countsAsInfield(k, s.pcInfield)) got = true;
+      } else {
+        onField[p.id]++;
+        if (i < e && countsAsInfield(k, s.pcInfield)) got = true;
+      }
     }
-    if (!got) noIF.push(shortName(p));
+    // Only ask it of players who are at the game during those innings.
+    const couldEarly = Array.from({ length: e }, (_, i) => i).some(i => playsIn(p, i));
+    if (!got && couldEarly) noIF.push(shortName(p));
   }
   const range = e === 1 ? 'inning 1' : `innings 1–${e}`;
-  if (e > 0 && noIF.length) notes.push(`${list(noIF)} ${noIF.length === 1 ? 'has' : 'have'} no infield inning in ${range}.`);
-  if (e > 0 && players.length * e > e * (s.pcInfield ? 6 : 4) && noIF.length)
-    notes.push(`There are more players than infield spots in ${range}. Try a later inning for the infield rule.`);
+  if (e > 0 && noIF.length) {
+    notes.push(`${list(noIF)} ${noIF.length === 1 ? 'has' : 'have'} no infield inning in ${range}.`);
+    // Say why, not just what. First the arithmetic that makes it impossible.
+    const infieldKeys = fieldPositions(s.outfield).filter(k => countsAsInfield(k, s.pcInfield));
+    const seats = e * infieldKeys.length;
+    if (seats < players.length) {
+      notes.push(`There are ${seats} infield spots in ${range} and ${players.length} players. Move the infield rule to a later inning, or turn it off.`);
+    }
+    // Then anything the coach set that narrowed this player's options.
+    for (const p of players) {
+      if (!noIF.includes(shortName(p))) continue;
+      const blocked = infieldKeys.filter(k => (k === 'P' && p.noP) || (k === 'C' && p.noC) || (p.avoid || []).includes(k));
+      if (blocked.length) {
+        const left = infieldKeys.length - blocked.length;
+        notes.push(`${shortName(p)} is kept out of ${list(blocked)}, leaving ${left} infield ${left === 1 ? 'spot' : 'spots'} to find in ${range}.`);
+      }
+    }
+  }
   notes.push(...twice);
+  if (s.minPlay) {
+    // A player here for three innings cannot play five, so the floor is whichever
+    // is smaller: the league's minimum, or the innings they are at the game.
+    const short = players.filter(p => {
+      const open = (p.to || inn) - (p.from || 1) + 1;
+      return onField[p.id] < Math.min(s.minPlay, open);
+    });
+    if (short.length) {
+      notes.push(`${list(short.map(shortName))} ${short.length === 1 ? 'plays' : 'play'} fewer than ${s.minPlay} innings.`);
+      const seats = inn * fieldCount, need = players.length * s.minPlay;
+      if (need > seats) {
+        notes.push(`${fieldCount} spots across ${inn} innings is ${seats} innings of play, and ${players.length} players at ${s.minPlay} each needs ${need}. Lower the minimum, or play more innings.`);
+      }
+    }
+  }
   const counts = players.filter(p => !p.noB).map(p => sat[p.id]);
   if (counts.length && Math.max(...counts) - Math.min(...counts) > 1) notes.push('Bench time is not even.');
 
@@ -1200,7 +1337,7 @@ $('build').addEventListener('click', () => {
     for (const k in row) if (row[k].lock) f[k] = row[k].pid;
     return f;
   });
-  const r = solveLineup({ slots: ks, innings: s.innings, early: early(), pcInfield: s.pcInfield, players, fixed });
+  const r = solveLineup({ slots: ks, innings: s.innings, early: early(), pcInfield: s.pcInfield, minPlay: s.minPlay, players, fixed });
   s.grid = r.assign.map((row, i) => {
     const o = {};
     row.forEach((p, j) => {
@@ -1209,6 +1346,9 @@ $('build').addEventListener('click', () => {
     return o;
   });
   changed();
+  // Stay quiet when the card is good. When it is not, say so once and let the
+  // coach ask for the detail. changed() clears the bar, so this comes after it.
+  if (checkLineup().length) setStatus('Some rules could not be met. Press Check to see why.');
 });
 $('undo').addEventListener('click', () => {
   if (!undoStack.length) return;

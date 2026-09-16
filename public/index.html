@@ -76,7 +76,9 @@
   /* Illustrations sit on their own flat blue, so the edges disappear. */
   .art { background: var(--art); border-radius: 16px; overflow: hidden; box-shadow: var(--shadow); }
   .art img { display: block; width: 100%; height: auto; }
-  .art.banner img { aspect-ratio: 16 / 5; object-fit: cover; object-position: center 78%; }
+  /* No crop on a wide screen. Cropping this art to a letterbox cut the coach's
+     head off, and the drawing already sits on its own flat blue. */
+  .art.banner img { aspect-ratio: auto; }
 
   figure { margin: 0; }
   /* height:auto matters: the width and height attributes on the img would
@@ -115,7 +117,7 @@
     .hero { padding: 38px 0 26px; }
     section { padding: 44px 0; }
     .lede { max-width: none; }
-    .art.banner img { aspect-ratio: 4 / 3; }
+    .art.banner img { aspect-ratio: 4 / 3; object-fit: cover; object-position: center 72%; }
   }
 </style>
 </head>
@@ -207,6 +209,9 @@
 
 <section class="band tip">
   <div class="wrap">
+    <div class="art" style="max-width:620px;margin:0 auto 26px">
+      <img src="/img/trophy.jpg" alt="A team lifting their coach with a trophy" width="1400" height="763" loading="lazy">
+    </div>
     <p><a class="btn" href="https://venmo.com/u/Zach-moren" rel="noopener">Send a tip on Venmo</a></p>
     <p class="cta-note">Venmo <b>@Zach-moren</b></p>
   </div>
