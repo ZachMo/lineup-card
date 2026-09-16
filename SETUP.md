@@ -56,13 +56,15 @@ A custom domain comes later: buy the name, then **Custom domains > Set up a doma
 
 ## 6. Paste your keys
 
-1. In Supabase, open **Project Settings > API keys**.
-2. Copy the **Project URL** and the **anon public** key.
-3. Put them in `supabase-config.js` in this repo, commit, and push. Cloudflare
+1. In Supabase, open **Project Settings > Data API** and copy the **Project URL**.
+2. Open **Project Settings > API Keys** and copy the key that starts with
+   `sb_publishable_`. Older projects call this the **anon public** key.
+3. Put both in `supabase-config.js` in this repo, commit, and push. Cloudflare
    redeploys on its own.
 
-Never copy the **service_role** key into this repo. That key ignores every access
-rule, and this code runs in the browser where anyone can read it.
+The other key, `sb_secret_` (older projects: **service_role**), never goes in this
+repo. It ignores every access rule, and this code runs in the browser where anyone
+can read it. If one ever leaks, revoke it on that same page straight away.
 
 ## 7. Test it
 

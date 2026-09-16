@@ -1,11 +1,14 @@
-// Your Supabase project. Fill these in after you create the project.
-// See SETUP.md, step 6.
+// Your Supabase project.
 //
-// Both values are meant to be public. The anon key only lets a visitor ask the
-// database questions; the access rules in schema.sql decide what comes back, and
-// they let each coach touch only their own rows. Never put the service_role key
-// here. That one ignores every rule, and this file ships to the browser.
+// Both values are meant to be public. The publishable key only lets a visitor ask
+// the database questions; the rules in schema.sql decide what comes back, and they
+// let each coach touch only their own rows.
+//
+// Two keys look alike, and only one belongs here:
+//   sb_publishable_...  (older projects: "anon public")  -> safe, use this one
+//   sb_secret_...       (older projects: "service_role")  -> never put it here
+// The secret key ignores every rule, and this file ships to every browser.
 window.LINEUP_CONFIG = {
-  url: '',      // e.g. https://abcdefghijklmnop.supabase.co
-  anonKey: '',  // the "anon public" key
+  url: 'https://cvzdpghpssscgmnwjoen.supabase.co',
+  publishableKey: 'sb_publishable_2zpScWoB2-hm8hEnPLQlrg_BDfiYolj',
 };

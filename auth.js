@@ -8,8 +8,9 @@
 // and its `changed()` redraw. With no project configured, it does nothing at all.
 (function () {
   const cfg = window.LINEUP_CONFIG || {};
+  const key = cfg.publishableKey || cfg.anonKey; // Supabase renamed this key in 2025.
   const bar = document.getElementById('account');
-  if (!bar || !cfg.url || !cfg.anonKey) return;
+  if (!bar || !cfg.url || !key) return;
 
   const SDK = 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js';
   const TEAM_KEY = 'lineup-card-team';
@@ -23,7 +24,7 @@
   sdk.src = SDK;
   sdk.onerror = () => { note = 'Cloud save is offline. Your team is still saved in this browser.'; render(); };
   sdk.onload = async () => {
-    supa = window.supabase.createClient(cfg.url, cfg.anonKey);
+    supa = window.supabase.createClient(cfg.url, key);
     const { data } = await supa.auth.getSession();
     user = (data.session && data.session.user) || null;
     supa.auth.onAuthStateChange((_event, session) => {
